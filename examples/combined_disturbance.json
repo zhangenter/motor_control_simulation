@@ -1,0 +1,96 @@
+{
+  "name": "三环复合干扰演示",
+  "speed_unit": "rpm",
+  "motor": {
+    "resistance": 0.6,
+    "ld": 0.0015,
+    "lq": 0.0015,
+    "flux": 0.055,
+    "pole_pairs": 4,
+    "inertia": 0.0008,
+    "viscous": 0.0001,
+    "dc_voltage": 48.0,
+    "current_limit": 15.0
+  },
+  "control": {
+    "mode": "电流-速度-位置",
+    "current": {
+      "kp": 4.0,
+      "ki": 800.0,
+      "kd": 0.0,
+      "kff": 0.0,
+      "output_limit": 27.0,
+      "integral_limit": 20.0,
+      "low_pass_enabled": false,
+      "low_pass_alpha": 0.2
+    },
+    "speed": {
+      "kp": 0.00837758041,
+      "ki": 0.18849555922,
+      "kd": 0.0,
+      "kff": 0.0,
+      "output_limit": 12.0,
+      "integral_limit": 8.0,
+      "low_pass_enabled": false,
+      "low_pass_alpha": 0.2
+    },
+    "position": {
+      "kp": 114.59155903,
+      "ki": 5.72957795,
+      "kd": 0.76394373,
+      "kff": 0.0,
+      "output_limit": 1145.91559026,
+      "integral_limit": 286.47889757,
+      "low_pass_enabled": false,
+      "low_pass_alpha": 0.2
+    },
+    "current_feedforward": true,
+    "speed_feedforward": false,
+    "position_feedforward": false,
+    "auto_tune_reserved": true
+  },
+  "command": {
+    "reference_type": "位置输入",
+    "kind": "S曲线",
+    "amplitude": 6.283185307,
+    "offset": 0.0,
+    "frequency": 0.5,
+    "start_time": 0.2,
+    "rise_time": 0.6,
+    "hold_time": 1.0,
+    "manual_value": 0.0,
+    "trajectory_time": [],
+    "trajectory_value": []
+  },
+  "disturbance": {
+    "cogging_enabled": true,
+    "cogging_amplitude": 0.02,
+    "cogging_harmonic": 6,
+    "cogging_phase_deg": 15.0,
+    "friction_enabled": true,
+    "static_friction": 0.04,
+    "coulomb_friction": 0.025,
+    "viscous_friction": 0.0002,
+    "stribeck_velocity": 4.77464829,
+    "load_enabled": true,
+    "load_constant": 0.01,
+    "load_step": 0.08,
+    "load_step_time": 1.5,
+    "load_sine_amplitude": 0.015,
+    "load_sine_frequency": 2.0,
+    "load_noise_std": 0.002,
+    "encoder_noise_std": 0.00002,
+    "encoder_resolution": 65536,
+    "encoder_delay": 0.0004,
+    "extra_inertia_enabled": true,
+    "extra_inertia": 0.0004,
+    "inertia_step_time": 2.0
+  },
+  "simulation": {
+    "dt": 0.0002,
+    "duration": 4.0,
+    "plot_interval": 0.002,
+    "realtime_factor": 1.0,
+    "random_seed": 7
+  }
+}

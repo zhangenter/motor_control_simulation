@@ -1,0 +1,12 @@
+venv/
+__pycache__/
+*.py[cod]
+.DS_Store
+.pytest_cache/
+.coverage
+.idea/
+artifacts/
+
+# User-generated experiment exports
+exports/
+/*.json
