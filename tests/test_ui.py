@@ -161,7 +161,7 @@ class UITests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as directory:
                 target = Path(directory) / "saved_controller.py"
                 with patch(
-                    "servolab.app.QFileDialog.getSaveFileName",
+                    "servolab.ui.custom_controller_dialog.QFileDialog.getSaveFileName",
                     return_value=(str(target), "Python 代码 (*.py)"),
                 ):
                     window.save_custom_code_button.click()

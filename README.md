@@ -33,11 +33,37 @@ python main.py
 
 指令幅值的单位由“用户输入”决定。含位置外环的拓扑可选择位置输入（rad）或速度输入（rpm）；速度输入会在每个仿真步内换算并积分成位置指令。纯速度拓扑固定为 rpm，纯电流拓扑固定为 A。速度指令、反馈、误差、曲线、CSV 数据及自定义控制器接口均统一使用 rpm；PMSM 物理方程内部会在需要时显式换算为 rad/s。
 
-运行核心测试：
+运行全部测试（包含桌面 UI、核心无界面运行和架构约束）：
 
 ```bash
-python -m unittest discover -s tests -v
+QT_QPA_PLATFORM=offscreen python -m unittest discover -s tests -v
 ```
+
+## 架构与复用
+
+`servolab` 已按职责拆为独立子包：
+
+```text
+servolab/
+├── config/       # 配置模型、序列化和旧单位迁移
+├── control/      # PID、伺服控制和自定义控制器进程
+├── plant/        # PMSM 与扰动模型
+├── simulation/   # 指令、历史数据和仿真引擎
+├── services/     # 仿真会话、实验读写、导出和代码生成
+└── ui/           # PyQt5/pyqtgraph 桌面适配层
+```
+
+`config`、`control`、`plant`、`simulation` 和 `services` 均不依赖 PyQt5、pyqtgraph 或 `servolab.ui`。未来的 Web、CLI 或后台任务可以直接复用这些模块。例如：
+
+```python
+from servolab.config import ExperimentConfig
+from servolab.services import SimulationSession
+
+session = SimulationSession(ExperimentConfig())
+history = session.run_offline(0.1)
+```
+
+`tests/test_architecture.py` 会持续检查项目 Python 文件不超过 500 行、函数不超过 100 行、核心层不反向依赖 UI，以及旧公共导入仍保持为薄兼容入口。
 
 ## 自定义控制器
 

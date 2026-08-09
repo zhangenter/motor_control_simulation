@@ -1,12 +1,12 @@
-"""Compatibility exports for the pre-refactor desktop widget module."""
+"""PyQt desktop user interface for ServoLab."""
 
-from .ui import (
+from .plot_dashboard import PlotDashboard
+from .topology import TopologyWidget
+from .widgets import (
     FocusWheelDoubleSpinBox,
     FocusWheelSpinBox,
     PIDEditor,
-    PlotDashboard,
     SwitchRow,
-    TopologyWidget,
     ValueCard,
     make_double,
     make_int,

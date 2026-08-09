@@ -2,17 +2,27 @@
 
 ## 1. 文档状态
 
-- 状态：已确认方案，待按本文实施
+- 状态：已实施并通过自动化验收
 - 目标版本：当前 `0.1.0` 代码基线
 - 文档范围：`servolab` 包的架构重构，以及相关测试和兼容层
 - 核心决定：仿真、控制、模型和应用服务不得依赖桌面 UI，确保未来可复用于 Web、CLI 或其他界面
 - 单位决定：位置统一使用 rad，对外速度统一使用 rpm，rad/s 只在物理方程边界显式使用
+- 重构前基线：Git 提交 `87ecd38`（`chore: establish pre-refactor baseline`）
+
+### 1.1 实施结果
+
+- 已创建 `config`、`control`、`plant`、`simulation`、`services` 和 `ui` 六个职责子包。
+- 仿真引擎通过 `CustomControllerRuntime` Protocol 使用自定义控制器，不再依赖具体进程类。
+- `SimulationSession`、实验持久化、数据导出、源码读写及控制器代码生成均可脱离 UI 使用。
+- PyQt5 与 pyqtgraph 仅存在于 `servolab/ui/`；旧桌面入口保留为薄兼容模块。
+- 当前最大项目 Python 文件为 `servolab/ui/parameter_panel.py`，455 行；最大函数为 `_build_experiment_form`，57 行。
+- 使用项目 `venv` 和 `QT_QPA_PLATFORM=offscreen` 完成 31 项自动化测试，全部通过。
 
 ## 2. 背景与现状
 
-当前 `servolab` 是单层 Python 包。核心算法模块规模尚可，但桌面界面的职责高度集中：
+重构前的 `servolab` 是单层 Python 包。核心算法模块规模尚可，但桌面界面的职责高度集中：
 
-| 文件 | 当前行数 | 主要问题 |
+| 文件 | 重构前行数 | 主要问题 |
 | --- | ---: | --- |
 | `servolab/app.py` | 1358 | `ServoLabWindow` 同时负责界面构建、配置映射、仿真调度、文件操作、控制器代码生成和进程生命周期 |
 | `servolab/ui_widgets.py` | 575 | 通用控件、拓扑图、PID 编辑器和完整绘图面板混在同一模块 |
@@ -21,11 +31,11 @@
 | `servolab/simulation.py` | 183 | 仿真引擎直接引用具体的自定义控制器进程实现 |
 | `servolab/units.py` | 17 | 新增的无依赖速度单位换算模块，应作为共享基础叶子模块保留 |
 
-当前已有两个函数超过 100 行：`generate_custom_controller_code` 为 180 行，`_build_custom_controller_dialog` 为 147 行。除函数超限外，主要风险仍来自超长类、职责混合以及桌面 UI 对用例流程的直接控制。
+重构前有两个函数超过 100 行：`generate_custom_controller_code` 为 180 行，`_build_custom_controller_dialog` 为 147 行。除函数超限外，主要风险来自超长类、职责混合以及桌面 UI 对用例流程的直接控制；这些问题现已通过服务提取和 UI 组件组合消除。
 
 测试基线为 23 个测试。使用项目 `venv` 并设置 `QT_QPA_PLATFORM=offscreen` 时全部通过；系统 Python 未安装 PyQt5/pyqtgraph，会跳过其中 9 个 UI 测试。重构验证统一使用项目 `venv`。
 
-当前 Git 仓库没有提交，全部项目文件处于未跟踪状态。实施前应先建立可回退的基线提交。
+实施前已运行 23 项原有测试并建立 Git 基线提交 `87ecd38`。重构后的新增测试覆盖架构约束和无界面服务用例。
 
 ## 3. 重构目标
 
@@ -153,7 +163,9 @@ servolab/
     ├── parameter_panel.py         # 参数表单及配置映射
     ├── plot_dashboard.py          # 绘图与游标
     ├── custom_controller_dialog.py
-    ├── controller_generator_panel.py
+    ├── file_actions.py             # 桌面文件对话框适配
+    ├── topology.py                 # 控制拓扑视图
+    ├── window_shell.py             # 主窗口静态布局区块
     ├── widgets.py                 # 小型通用控件
     └── theme.py                   # Qt 样式和绘图颜色
 ```
@@ -228,14 +240,15 @@ servolab/
 - 类暂不设置机械行数上限，但超长类必须通过职责和组合进行审查。
 - 不允许通过压缩代码、合并语句或删除必要空行规避限制。
 
-新增 `tests/test_architecture.py` 自动检查：
+`tests/test_architecture.py` 已实现以下自动检查：
 
 1. 文件和函数行数。
 2. 非 UI 包不导入 PyQt5、pyqtgraph 或 `servolab.ui`。
 3. 核心包在没有桌面 UI 依赖的进程中可导入。
-4. 兼容模块只包含导入、公共符号声明和必要文档字符串。
-5. 公开速度字段、历史通道与自定义控制器接口遵守 rpm 契约。
-6. 生成出的控制器源码中每个函数不超过 100 行。
+4. 桌面兼容模块只包含导入、公共符号声明和必要文档字符串。
+5. 生成出的控制器源码中每个函数不超过 100 行。
+
+公开速度字段、历史通道与自定义控制器接口的 rpm 契约由配置、单位、仿真和控制器生成测试共同覆盖。
 
 ## 10. 分阶段实施计划
 
@@ -290,7 +303,7 @@ servolab/
 3. 更新 README 的架构、单位契约、开发和测试说明。
 4. 运行完整测试、结构检查和桌面冒烟测试。
 
-每个阶段单独完成验证；出现回归时在当前阶段修复，不带着失败进入下一阶段。
+所有阶段已按顺序完成，并在每个职责边界迁移后运行相应测试；最终结果见第 1.1 节。
 
 ## 11. 测试与验证策略
 
@@ -303,7 +316,7 @@ servolab/
 
 ### 11.2 UI 重构阶段
 
-必须在 `QT_QPA_PLATFORM=offscreen` 下执行全部 UI 测试，并额外进行一次人工桌面冒烟测试：
+必须在 `QT_QPA_PLATFORM=offscreen` 下执行全部 UI 自动化测试。以下人工桌面冒烟项目保留为发布前检查清单：
 
 1. 启动、暂停、继续、单步和复位。
 2. 切换全部控制拓扑和允许的输入类型。
@@ -343,7 +356,7 @@ assert simulation.last_sample["speed"] == simulation.motor.state.omega  # rpm
 - 所有公开速度字段、自定义控制器输入和历史数据使用 rpm，物理方程边界显式转换为 rad/s。
 - 旧 rad/s JSON 配置继续正确迁移，当前 JSON 保存 `speed_unit="rpm"`。
 - 全部生成控制器可编译运行，生成源码中的函数不超过 100 行。
-- `python main.py` 正常启动，关键桌面流程通过冒烟测试。
+- `python main.py` 的窗口构造、步进和关键交互通过离屏 UI 自动化测试；发布前仍需执行第 11.2 节的人工冒烟清单。
 - 旧公共导入路径和 JSON 配置格式保持兼容。
 - PMSM 模型、控制结果和默认实验行为没有非预期变化。
 - README 与最终目录结构一致。
@@ -353,7 +366,7 @@ assert simulation.last_sample["speed"] == simulation.motor.state.omega  # rpm
 | 风险 | 控制措施 |
 | --- | --- |
 | 大量移动导致导入路径破坏 | 先建立兼容导出，再逐步移动；每步运行导入测试 |
-| UI 测试当前被跳过 | UI 重构前完成依赖环境并锁定行为 |
+| 环境缺少桌面依赖导致 UI 测试被跳过 | 统一使用项目 `venv` 和离屏 Qt 环境锁定行为 |
 | 参数表单拆分后在线更新失效 | 为 `load_config`/`update_config` 和在线参数同步增加测试 |
 | 自定义控制器进程生命周期回归 | 用协议隔离实现，并覆盖启动、超时、错误和停止流程 |
 | 代码生成器和进程运行器再次耦合 | 分属服务层与控制层，通过源码字符串和更新协议连接 |
