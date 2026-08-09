@@ -200,6 +200,7 @@ class ServoLabWindow(QMainWindow):
     def _sync_config_from_form(self) -> None:
         self.parameters.update_config(self.config)
         self.simulation.disturbance.dt = self.config.simulation.dt
+        self.simulation.encoder.dt = self.config.simulation.dt
         self.sample_status.setText(
             f"dt {self.config.simulation.dt * 1e6:.0f} μs  ·  "
             f"plot {self.config.simulation.plot_interval * 1e3:.1f} ms"
@@ -289,8 +290,8 @@ class ServoLabWindow(QMainWindow):
         sample = self.simulation.last_sample
         if sample:
             self.time_card.set_value(sample.get("time", 0.0), 4)
-            self.position_card.set_value(sample.get("position", 0.0), 4)
-            self.speed_card.set_value(sample.get("speed", 0.0), 3)
+            self.position_card.set_value(sample.get("position_actual", sample.get("position", 0.0)), 4)
+            self.speed_card.set_value(sample.get("speed_actual", sample.get("speed", 0.0)), 3)
             self.current_card.set_value(sample.get("iq", 0.0), 3)
             self.torque_card.set_value(sample.get("torque", 0.0), 4)
         history = self.simulation.history.data
@@ -316,10 +317,10 @@ class ServoLabWindow(QMainWindow):
     def _metric_series(self, history):
         reference_type = self.config.command.reference_type
         if reference_type == ReferenceType.SPEED:
-            return "速度", "rpm", history.get("speed", []), history.get("user_speed_ref", [])
+            return "速度", "rpm", history.get("speed_actual", []), history.get("user_speed_ref", [])
         if reference_type == ReferenceType.CURRENT:
             return "电流", "A", history.get("iq", []), history.get("current_ref", [])
-        return "位置", "rad", history.get("position", []), history.get("position_ref", [])
+        return "位置", "rad", history.get("position_actual", []), history.get("position_ref", [])
 
     @staticmethod
     def _settling_time(times, reference, feedback) -> float | None:

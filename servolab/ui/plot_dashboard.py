@@ -15,10 +15,12 @@ class PlotDashboard(QTabWidget):
     CURSOR_UNITS = {
         "position_ref": "rad",
         "position": "rad",
+        "position_actual": "rad",
         "position_error": "rad",
         "speed_ref": "rpm",
         "user_speed_ref": "rpm",
         "speed": "rpm",
+        "speed_actual": "rpm",
         "speed_error": "rpm",
         "current_ref": "A",
         "iq": "A",
@@ -39,7 +41,7 @@ class PlotDashboard(QTabWidget):
             "rad",
             (
                 ("position_ref", "位置指令", PLOT_COLORS["reference"]),
-                ("position", "位置反馈", PLOT_COLORS["feedback"]),
+                ("position", "编码器位置", PLOT_COLORS["feedback"]),
                 ("position_error", "位置误差", PLOT_COLORS["error"]),
             ),
         ),
@@ -49,7 +51,8 @@ class PlotDashboard(QTabWidget):
             (
                 ("user_speed_ref", "用户速度输入", PLOT_COLORS["disturbance"]),
                 ("speed_ref", "速度指令", PLOT_COLORS["reference"]),
-                ("speed", "速度反馈", PLOT_COLORS["feedback"]),
+                ("speed", "估算速度", PLOT_COLORS["feedback"]),
+                ("speed_actual", "实际速度", PLOT_COLORS["secondary"]),
                 ("speed_error", "速度误差", PLOT_COLORS["error"]),
             ),
         ),

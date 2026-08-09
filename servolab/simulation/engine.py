@@ -5,6 +5,7 @@ from typing import Callable
 
 from ..config import ExperimentConfig, LoopMode, ReferenceType, has_position_outer_loop
 from ..control import ControlOutput, CustomControllerRuntime, ServoController
+from ..feedback import EncoderModel, SpeedEstimator
 from ..plant import DisturbanceModel, PMSMMotor
 from ..units import rpm_to_rad_s
 from .commands import command_value
@@ -34,6 +35,17 @@ class ServoSimulation:
             cfg.simulation.dt,
             cfg.simulation.random_seed,
         )
+        self.encoder = EncoderModel(
+            cfg.feedback.encoder,
+            cfg.simulation.dt,
+            cfg.simulation.random_seed + 1,
+        )
+        self.speed_estimator = SpeedEstimator(
+            cfg.feedback.speed_estimator,
+            cfg.feedback.encoder,
+        )
+        self.measured_position = self.motor.state.theta
+        self.estimated_speed = self.motor.state.omega
 
     def apply_config(self, config: ExperimentConfig, reset: bool = True) -> None:
         self.config = config
@@ -44,11 +56,15 @@ class ServoSimulation:
     def reset(self) -> None:
         self.time = 0.0
         self._sample_accumulator = 0.0
-        self._integrated_position_ref = self.motor.state.theta
         self._reference_signature = None
         self.motor.reset()
         self.controller.reset()
         self.disturbance.reset(self.config.simulation.random_seed)
+        self.encoder.reset(self.config.simulation.random_seed + 1)
+        self.speed_estimator.reset()
+        self.measured_position = self.motor.state.theta
+        self.estimated_speed = 0.0
+        self._integrated_position_ref = self.measured_position
         self.history.clear()
         self.last_sample = {}
         self._record_sample(
@@ -68,7 +84,10 @@ class ServoSimulation:
         cfg = self.config
         dt = cfg.simulation.dt
         state = self.motor.state
-        measured_theta, measured_speed = self.disturbance.encoder(state.theta, state.omega)
+        measured_theta = self.encoder.measure(state.theta)
+        measured_speed = self.speed_estimator.update(measured_theta, dt, state.omega)
+        self.measured_position = measured_theta
+        self.estimated_speed = measured_speed
         measured = self.motor.as_dict()
         measured.update(theta=measured_theta, omega=measured_speed, t=self.time)
         user_command = command_value(cfg.command, self.time)
@@ -152,12 +171,18 @@ class ServoSimulation:
             "time": self.time,
             "command": command,
             "position_ref": control.position_ref,
-            "position": state.theta,
-            "position_error": control.position_ref - state.theta if "位置" in mode.value else 0.0,
+            "position": self.measured_position,
+            "position_actual": state.theta,
+            "position_error": (
+                control.position_ref - self.measured_position if "位置" in mode.value else 0.0
+            ),
             "user_speed_ref": command if reference_type == ReferenceType.SPEED else 0.0,
             "speed_ref": control.speed_ref,
-            "speed": state.omega,
-            "speed_error": control.speed_ref - state.omega if "速度" in mode.value else 0.0,
+            "speed": self.estimated_speed,
+            "speed_actual": state.omega,
+            "speed_error": (
+                control.speed_ref - self.estimated_speed if "速度" in mode.value else 0.0
+            ),
             "current_ref": target_current,
             "id": state.id,
             "iq": state.iq,

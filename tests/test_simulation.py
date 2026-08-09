@@ -1,7 +1,13 @@
 import math
 import unittest
 
-from servolab.config import CommandType, ExperimentConfig, LoopMode, ReferenceType
+from servolab.config import (
+    CommandType,
+    ExperimentConfig,
+    LoopMode,
+    ReferenceType,
+    SpeedEstimatorMethod,
+)
 from servolab.simulation import ServoSimulation
 
 
@@ -45,6 +51,37 @@ class SimulationTests(unittest.TestCase):
         self.assertAlmostEqual(sim.last_sample["command"], 120.0)
         self.assertAlmostEqual(sim.last_sample["user_speed_ref"], 120.0)
         self.assertAlmostEqual(sim.last_sample["position_ref"], 2.0 * math.pi, delta=0.002)
+
+    def test_speed_feedback_is_estimated_from_quantized_encoder_position(self):
+        cfg = ExperimentConfig()
+        cfg.feedback.encoder.resolution = 32
+        cfg.feedback.speed_estimator.method = SpeedEstimatorMethod.DIFFERENCE
+        sim = ServoSimulation(cfg)
+        sim.run_offline(0.4)
+        differences = [
+            abs(estimated - actual)
+            for estimated, actual in zip(
+                sim.history.data["speed"],
+                sim.history.data["speed_actual"],
+            )
+        ]
+        self.assertGreater(max(differences), 1.0)
+        self.assertEqual(len(sim.history.data["position_actual"]), len(sim.history))
+
+    def test_model_based_speed_estimators_remain_finite_in_closed_loop(self):
+        methods = (
+            SpeedEstimatorMethod.PLL,
+            SpeedEstimatorMethod.KALMAN,
+            SpeedEstimatorMethod.STATE_OBSERVER,
+        )
+        for method in methods:
+            with self.subTest(method=method):
+                cfg = ExperimentConfig()
+                cfg.feedback.speed_estimator.method = method
+                sim = ServoSimulation(cfg)
+                sim.run_offline(0.5)
+                for key in ("position", "speed", "speed_actual", "iq", "vq"):
+                    self.assertTrue(math.isfinite(sim.last_sample[key]), key)
 
 
 if __name__ == "__main__":

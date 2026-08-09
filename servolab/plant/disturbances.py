@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import deque
 import math
 
 import numpy as np
@@ -15,10 +14,8 @@ class DisturbanceModel:
         self.motor = motor
         self.dt = dt
         self.rng = np.random.default_rng(seed)
-        self.delay_queue: deque[tuple[float, float]] = deque()
 
     def reset(self, seed: int | None = None) -> None:
-        self.delay_queue.clear()
         if seed is not None:
             self.rng = np.random.default_rng(seed)
 
@@ -65,18 +62,3 @@ class DisturbanceModel:
         if cfg.extra_inertia_enabled and time_s >= cfg.inertia_step_time:
             return max(cfg.extra_inertia, 0.0)
         return 0.0
-
-    def encoder(self, theta: float, speed_rpm: float) -> tuple[float, float]:
-        cfg = self.config
-        measured_theta = theta
-        if cfg.encoder_resolution > 0:
-            quantum = 2.0 * math.pi / cfg.encoder_resolution
-            measured_theta = round(measured_theta / quantum) * quantum
-        if cfg.encoder_noise_std > 0.0:
-            measured_theta += float(self.rng.normal(0.0, cfg.encoder_noise_std))
-
-        self.delay_queue.append((measured_theta, speed_rpm))
-        delay_steps = max(int(round(cfg.encoder_delay / max(self.dt, 1e-9))), 0)
-        while len(self.delay_queue) > delay_steps + 1:
-            self.delay_queue.popleft()
-        return self.delay_queue[0]

@@ -9,9 +9,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 try:
     from PyQt5.QtCore import QPoint, QPointF, Qt
     from PyQt5.QtGui import QWheelEvent
-    from PyQt5.QtWidgets import QApplication, QLineEdit, QVBoxLayout, QWidget
+    from PyQt5.QtWidgets import QApplication, QGroupBox, QLineEdit, QVBoxLayout, QWidget
     from servolab.app import ServoLabWindow
-    from servolab.config import LoopMode, ReferenceType
+    from servolab.config import LoopMode, ReferenceType, SpeedEstimatorMethod
     from servolab.ui_widgets import PlotDashboard, make_double, make_int
 except ImportError:
     QApplication = None
@@ -41,6 +41,40 @@ class UITests(unittest.TestCase):
             window.current_pid.kp.setValue(7.25)
             self.assertAlmostEqual(window.config.control.current.kp, 7.25)
             self.assertAlmostEqual(window.simulation.controller.current_q.config.kp, 7.25)
+        finally:
+            window.close()
+
+    def test_feedback_tab_separates_encoder_estimator_and_inertia(self):
+        window = ServoLabWindow()
+        try:
+            tab_names = [window.parameters.tabs.tabText(i) for i in range(window.parameters.tabs.count())]
+            self.assertIn("反馈", tab_names)
+            editor = window.parameters.feedback_editor
+            editor.estimator_method.setCurrentText(SpeedEstimatorMethod.IDEAL.value)
+            self.assertEqual(
+                window.config.feedback.speed_estimator.method,
+                SpeedEstimatorMethod.IDEAL,
+            )
+            self.assertFalse(editor.estimator_cutoff.isEnabled())
+            editor.estimator_method.setCurrentText(SpeedEstimatorMethod.FILTERED_DIFFERENCE.value)
+            self.assertTrue(editor.estimator_cutoff.isEnabled())
+            editor.estimator_method.setCurrentText(SpeedEstimatorMethod.PLL.value)
+            self.assertTrue(editor.estimator_cutoff.isHidden())
+            self.assertFalse(editor.pll_bandwidth.isHidden())
+            editor.pll_bandwidth.setValue(45.0)
+            self.assertEqual(window.config.feedback.speed_estimator.pll_bandwidth, 45.0)
+            editor.estimator_method.setCurrentText(SpeedEstimatorMethod.KALMAN.value)
+            self.assertFalse(editor.kalman_acceleration_noise.isHidden())
+            self.assertTrue(editor.pll_bandwidth.isHidden())
+            editor.estimator_method.setCurrentText(SpeedEstimatorMethod.STATE_OBSERVER.value)
+            self.assertFalse(editor.observer_bandwidth.isHidden())
+            group_titles = {
+                group.title() for group in window.parameters.findChildren(QGroupBox)
+            }
+            self.assertIn("编码器", group_titles)
+            self.assertIn("速度估算", group_titles)
+            self.assertIn("负载惯量变化", group_titles)
+            self.assertIn("speed_actual", window.plots.curves)
         finally:
             window.close()
 
@@ -203,7 +237,7 @@ class UITests(unittest.TestCase):
             self.assertAlmostEqual(vertical.value(), 0.2)
             self.assertAlmostEqual(horizontal.value(), 20.0)
             self.assertIn("t = 0.2 s", label.toPlainText())
-            self.assertIn("位置反馈 = 20 rad", label.toPlainText())
+            self.assertIn("编码器位置 = 20 rad", label.toPlainText())
             self.assertNotIn("位置误差", label.toPlainText())
         finally:
             dashboard.close()

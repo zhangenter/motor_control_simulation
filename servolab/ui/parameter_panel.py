@@ -24,6 +24,7 @@ from ..config import (
     allowed_reference_types,
     default_reference_type,
 )
+from .feedback_editor import FeedbackEditor
 from .widgets import PIDEditor, make_double, make_int
 
 
@@ -43,9 +44,13 @@ class ParameterPanel(QFrame):
         title.setObjectName("SectionTitle")
         outer.addWidget(title)
         self.tabs = QTabWidget()
+        self.tabs.setStyleSheet("QTabBar::tab { padding-left: 9px; padding-right: 9px; }")
         self.tabs.addTab(self._scroll_tab(self._build_experiment_form()), "实验")
         self.tabs.addTab(self._scroll_tab(self._build_motor_form()), "电机")
         self.tabs.addTab(self._scroll_tab(self._build_pid_form()), "PID")
+        self.feedback_editor = FeedbackEditor(self.config.feedback)
+        self.feedback_editor.changed.connect(self._field_changed)
+        self.tabs.addTab(self._scroll_tab(self.feedback_editor), "反馈")
         self.tabs.addTab(self._scroll_tab(self._build_disturbance_form()), "干扰")
         outer.addWidget(self.tabs)
 
@@ -216,7 +221,7 @@ class ParameterPanel(QFrame):
         self._add_cogging_group(layout)
         self._add_friction_group(layout)
         self._add_load_group(layout)
-        self._add_encoder_group(layout)
+        self._add_inertia_group(layout)
         layout.addStretch()
         checks = (
             self.cogging_enabled,
@@ -280,19 +285,13 @@ class ParameterPanel(QFrame):
             form.addRow(label, widget)
         layout.addWidget(group)
 
-    def _add_encoder_group(self, layout) -> None:
-        group = QGroupBox("编码器与惯量变化")
+    def _add_inertia_group(self, layout) -> None:
+        group = QGroupBox("负载惯量变化")
         form = QFormLayout(group)
-        self.encoder_noise = make_double(0, 0, 1000, 8, 0.00001, " rad")
-        self.encoder_resolution = make_int(65536, 0, 100000000, " cnt/rev")
-        self.encoder_delay = make_double(0, 0, 10, 6, 0.0001, " s")
         self.extra_inertia_enabled = QCheckBox("启用负载惯量阶跃")
         self.extra_inertia = make_double(0, 0, 100, 8, 0.0001, " kg·m²")
         self.inertia_time = make_double(1, 0, 1e4, 4, 0.1, " s")
         for label, widget in (
-            ("位置噪声 σ", self.encoder_noise),
-            ("分辨率", self.encoder_resolution),
-            ("采样延迟", self.encoder_delay),
             ("", self.extra_inertia_enabled),
             ("附加惯量", self.extra_inertia),
             ("变化时刻", self.inertia_time),
@@ -313,6 +312,7 @@ class ParameterPanel(QFrame):
         self._update_command_config(config)
         self._update_motor_config(config)
         self._update_control_config(config)
+        self.feedback_editor.update_config(config.feedback)
         self._update_disturbance_config(config)
 
     def _update_command_config(self, config: ExperimentConfig) -> None:
@@ -356,8 +356,7 @@ class ParameterPanel(QFrame):
             "cogging_amplitude", "cogging_harmonic", "cogging_phase_deg",
             "static_friction", "coulomb_friction", "viscous_friction", "stribeck_velocity",
             "load_constant", "load_step", "load_step_time", "load_sine_amplitude",
-            "load_sine_frequency", "load_noise_std", "encoder_noise_std", "encoder_resolution",
-            "encoder_delay", "extra_inertia", "inertia_step_time",
+            "load_sine_frequency", "load_noise_std", "extra_inertia", "inertia_step_time",
         )
         for name, widget in zip(names, self._disturbance_fields()):
             setattr(disturbance, name, widget.value())
@@ -376,6 +375,7 @@ class ParameterPanel(QFrame):
         self.ff_current.setChecked(config.control.current_feedforward)
         self.ff_speed.setChecked(config.control.speed_feedforward)
         self.ff_position.setChecked(config.control.position_feedforward)
+        self.feedback_editor.load_config(config.feedback)
         self._load_disturbance_fields(config)
         self._loading = False
         self.update_command_units(config.command.reference_type)
@@ -415,8 +415,7 @@ class ParameterPanel(QFrame):
             disturbance.stribeck_velocity, disturbance.load_constant, disturbance.load_step,
             disturbance.load_step_time, disturbance.load_sine_amplitude,
             disturbance.load_sine_frequency, disturbance.load_noise_std,
-            disturbance.encoder_noise_std, disturbance.encoder_resolution,
-            disturbance.encoder_delay, disturbance.extra_inertia, disturbance.inertia_step_time,
+            disturbance.extra_inertia, disturbance.inertia_step_time,
         )
         for widget, value in zip(self._disturbance_fields(), values):
             widget.setValue(value)
@@ -450,6 +449,6 @@ class ParameterPanel(QFrame):
             self.cogging_amplitude, self.cogging_harmonic, self.cogging_phase,
             self.static_friction, self.coulomb_friction, self.friction_viscous,
             self.stribeck_velocity, self.load_constant, self.load_step, self.load_step_time,
-            self.load_sine_amp, self.load_sine_freq, self.load_noise, self.encoder_noise,
-            self.encoder_resolution, self.encoder_delay, self.extra_inertia, self.inertia_time,
+            self.load_sine_amp, self.load_sine_freq, self.load_noise,
+            self.extra_inertia, self.inertia_time,
         )

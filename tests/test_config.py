@@ -3,7 +3,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from servolab.config import CommandType, ExperimentConfig, LoopMode, ReferenceType
+from servolab.config import (
+    CommandType,
+    ExperimentConfig,
+    LoopMode,
+    ReferenceType,
+    SpeedEstimatorMethod,
+)
 
 
 class ConfigTests(unittest.TestCase):
@@ -13,6 +19,9 @@ class ConfigTests(unittest.TestCase):
         cfg.command.kind = CommandType.SINE
         cfg.command.reference_type = ReferenceType.SPEED
         cfg.disturbance.cogging_enabled = True
+        cfg.feedback.encoder.resolution = 4096
+        cfg.feedback.speed_estimator.method = SpeedEstimatorMethod.KALMAN
+        cfg.feedback.speed_estimator.kalman_acceleration_noise = 750.0
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "experiment.json"
             cfg.save(path)
@@ -22,7 +31,27 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(loaded.command.kind, CommandType.SINE)
         self.assertEqual(loaded.command.reference_type, ReferenceType.SPEED)
         self.assertTrue(loaded.disturbance.cogging_enabled)
+        self.assertEqual(loaded.feedback.encoder.resolution, 4096)
+        self.assertEqual(loaded.feedback.speed_estimator.method, SpeedEstimatorMethod.KALMAN)
+        self.assertEqual(loaded.feedback.speed_estimator.kalman_acceleration_noise, 750.0)
         self.assertEqual(loaded.speed_unit, "rpm")
+
+    def test_legacy_encoder_fields_are_migrated_with_ideal_speed_feedback(self):
+        loaded = ExperimentConfig.from_dict(
+            {
+                "speed_unit": "rpm",
+                "disturbance": {
+                    "encoder_noise_std": 0.001,
+                    "encoder_resolution": 2048,
+                    "encoder_delay": 0.003,
+                },
+            }
+        )
+        self.assertEqual(loaded.feedback.encoder.noise_std, 0.001)
+        self.assertEqual(loaded.feedback.encoder.resolution, 2048)
+        self.assertEqual(loaded.feedback.encoder.delay, 0.003)
+        self.assertEqual(loaded.feedback.speed_estimator.method, SpeedEstimatorMethod.IDEAL)
+        self.assertNotIn("encoder_resolution", loaded.to_dict()["disturbance"])
 
     def test_legacy_rad_s_config_is_migrated_to_rpm(self):
         loaded = ExperimentConfig.from_dict(

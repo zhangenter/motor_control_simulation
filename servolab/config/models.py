@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -78,6 +79,39 @@ class CommandConfig:
     trajectory_value: list[float] = field(default_factory=list)
 
 
+class SpeedEstimatorMethod(str, Enum):
+    IDEAL = "理想速度"
+    DIFFERENCE = "位置差分"
+    FILTERED_DIFFERENCE = "差分 + 一阶低通"
+    PLL = "PLL"
+    KALMAN = "卡尔曼滤波"
+    STATE_OBSERVER = "二阶状态观测器"
+
+
+@dataclass
+class EncoderConfig:
+    noise_std: float = 0.0
+    resolution: int = 65536
+    delay: float = 0.0
+
+
+@dataclass
+class SpeedEstimatorConfig:
+    method: SpeedEstimatorMethod = SpeedEstimatorMethod.FILTERED_DIFFERENCE
+    cutoff_frequency: float = 50.0
+    pll_bandwidth: float = 30.0
+    pll_damping: float = 0.707
+    kalman_acceleration_noise: float = 500.0
+    observer_bandwidth: float = 30.0
+    observer_damping: float = 1.0
+
+
+@dataclass
+class FeedbackConfig:
+    encoder: EncoderConfig = field(default_factory=EncoderConfig)
+    speed_estimator: SpeedEstimatorConfig = field(default_factory=SpeedEstimatorConfig)
+
+
 @dataclass
 class DisturbanceConfig:
     cogging_enabled: bool = False
@@ -96,9 +130,6 @@ class DisturbanceConfig:
     load_sine_amplitude: float = 0.0
     load_sine_frequency: float = 1.0
     load_noise_std: float = 0.0
-    encoder_noise_std: float = 0.0
-    encoder_resolution: int = 65536
-    encoder_delay: float = 0.0
     extra_inertia_enabled: bool = False
     extra_inertia: float = 0.0
     inertia_step_time: float = 1.0
@@ -119,6 +150,7 @@ class ExperimentConfig:
     motor: MotorConfig = field(default_factory=MotorConfig)
     control: ControlConfig = field(default_factory=ControlConfig)
     command: CommandConfig = field(default_factory=CommandConfig)
+    feedback: FeedbackConfig = field(default_factory=FeedbackConfig)
     disturbance: DisturbanceConfig = field(default_factory=DisturbanceConfig)
     simulation: SimulationConfig = field(default_factory=SimulationConfig)
     speed_unit: str = "rpm"
