@@ -16,6 +16,23 @@ QFrame#Header {
     background: #111a1e;
     border-bottom: 1px solid #26353b;
 }
+QMenuBar {
+    color: #aebfc3;
+    background: #0c1316;
+    border-bottom: 1px solid #243239;
+    padding: 2px 10px;
+}
+QMenuBar::item { background: transparent; padding: 5px 12px; }
+QMenuBar::item:selected { color: #e9f5f3; background: #1b2a2f; }
+QMenu {
+    color: #dce7e9;
+    background: #121c20;
+    border: 1px solid #34464d;
+    padding: 6px;
+}
+QMenu::item { min-width: 180px; padding: 7px 28px 7px 12px; }
+QMenu::item:selected { color: #0b1714; background: #45d6ad; }
+QMenu::separator { height: 1px; background: #2a3a40; margin: 5px 8px; }
 QLabel#Brand {
     color: #f2f7f8;
     font-size: 22px;
@@ -31,6 +48,43 @@ QLabel#SectionTitle {
     padding: 5px 0;
 }
 QLabel#DialogTitle { color: #edf8f6; font-size: 20px; font-weight: 700; }
+QFrame#TuningHeader {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #142722, stop:1 #111a1e);
+    border: 1px solid #2b4a42;
+    border-left: 3px solid #45d6ad;
+}
+QLabel#TuningEyebrow { color: #52d8b3; font-size: 9px; font-weight: 700; letter-spacing: 2px; }
+QFrame#TuningHeader QLabel { background: transparent; }
+QLabel#TuningDescription { color: #84989e; background: transparent; }
+QLabel#TuningContext {
+    color: #8adfc6;
+    background: #162621;
+    border: 1px solid #2b4a42;
+    border-radius: 9px;
+    padding: 3px 9px;
+    font-size: 10px;
+}
+QFrame#TuningPanel { background: #10191c; border: 1px solid #293a40; }
+QFrame#TuningPanel QLabel { background: transparent; }
+QLabel#TuningPanelTitle { color: #e2eeee; font-size: 14px; font-weight: 700; }
+QLabel#TuningFormula {
+    color: #d7b66d;
+    background: #171b19;
+    border-left: 2px solid #a9823e;
+    padding: 7px 9px;
+    font-family: "Menlo", "Consolas";
+}
+QLabel#TuningHint { color: #6f858c; background: transparent; }
+QFrame#TuningResults { background: #0c1316; border: 1px solid #293a40; }
+QFrame#TuningResultCard { background: #142025; border: 1px solid #263b42; }
+QFrame#TuningResults QLabel { background: transparent; }
+QLabel#TuningGainName { color: #6f858c; font-size: 9px; font-weight: 700; letter-spacing: 1px; }
+QLabel#TuningGainValue {
+    color: #55ddb7;
+    font-size: 18px;
+    font-weight: 700;
+    font-family: "Menlo", "Consolas";
+}
 QLabel#CustomEditorTitle { color: #e4edef; font-size: 14px; font-weight: 700; }
 QLabel#CustomEditorDescription { color: #7f9399; }
 QLabel#CustomEditorWarning { color: #d0a05b; padding: 4px 0; }

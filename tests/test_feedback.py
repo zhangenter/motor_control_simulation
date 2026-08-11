@@ -3,6 +3,7 @@ import unittest
 
 from servolab.config import EncoderConfig, SpeedEstimatorConfig, SpeedEstimatorMethod
 from servolab.feedback import EncoderModel, SpeedEstimator
+from servolab.units import rad_s_to_rpm
 
 
 class FeedbackTests(unittest.TestCase):
@@ -44,6 +45,7 @@ class FeedbackTests(unittest.TestCase):
         dt = 0.001
         methods = (
             SpeedEstimatorMethod.PLL,
+            SpeedEstimatorMethod.ORTHOGONAL_PLL,
             SpeedEstimatorMethod.KALMAN,
             SpeedEstimatorMethod.STATE_OBSERVER,
         )
@@ -58,6 +60,32 @@ class FeedbackTests(unittest.TestCase):
                     position = 2.0 * math.pi * index * dt
                     speed = estimator.update(position, dt)
                 self.assertAlmostEqual(speed, 60.0, delta=0.2)
+
+    def test_orthogonal_pll_limits_speed_without_integrator_windup(self):
+        limit_rpm = 30.0
+        estimator = SpeedEstimator(
+            SpeedEstimatorConfig(
+                method=SpeedEstimatorMethod.ORTHOGONAL_PLL,
+                pll_bandwidth=30.0,
+                pll_damping=0.707,
+                pll_speed_limit=limit_rpm,
+            )
+        )
+        dt = 0.001
+        estimator.update(0.0, dt)
+        speed = 0.0
+        peak_speed = 0.0
+        for _ in range(2000):
+            measured = estimator.position_estimate + math.pi / 2.0
+            speed = estimator.update(measured, dt)
+            peak_speed = max(peak_speed, abs(speed))
+
+        self.assertAlmostEqual(speed, limit_rpm)
+        self.assertLessEqual(peak_speed, limit_rpm)
+        self.assertLessEqual(
+            abs(rad_s_to_rpm(estimator.speed_estimate_rad_s)),
+            limit_rpm * 1.01,
+        )
 
     def test_kalman_measurement_variance_includes_noise_and_quantization(self):
         encoder = EncoderConfig(noise_std=0.001, resolution=1024)

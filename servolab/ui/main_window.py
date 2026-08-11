@@ -21,6 +21,7 @@ from ..control import CustomControllerError
 from ..services import ControllerGenerationOptions, SimulationSession, generate_custom_controller_code
 from .custom_controller_dialog import CustomControllerDialog, CustomControllerManager
 from .file_actions import DesktopFileActions
+from .menu_actions import ApplicationMenuController
 from .parameter_panel import ParameterPanel
 from .plot_dashboard import PlotDashboard
 from .topology import TopologyWidget
@@ -148,6 +149,8 @@ class ServoLabWindow(QMainWindow):
             self._refresh_ui,
             self._log,
         )
+        self.menu_actions = ApplicationMenuController(self)
+        self.pid_calculator = self.menu_actions.pid_calculator
 
     def _expose_compatibility_widgets(self) -> None:
         for name in (
@@ -421,5 +424,6 @@ class ServoLabWindow(QMainWindow):
     def closeEvent(self, event) -> None:  # noqa: N802
         self.plots.shutdown()
         self.custom_dialog.close()
+        self.pid_calculator.close()
         self.session.close()
         event.accept()

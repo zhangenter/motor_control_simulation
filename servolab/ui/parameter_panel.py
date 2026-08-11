@@ -154,9 +154,9 @@ class ParameterPanel(QFrame):
         self.motor_flux = make_double(0.055, 0.000001, 100, 6, 0.005, " Wb")
         self.motor_poles = make_int(4, 1, 100)
         for label, widget in (
-            ("定子电阻 Rs", self.motor_r),
-            ("d 轴电感 Ld", self.motor_ld),
-            ("q 轴电感 Lq", self.motor_lq),
+            ("定子电阻 Rs（每相）", self.motor_r),
+            ("d 轴电感 Ld（每相等效）", self.motor_ld),
+            ("q 轴电感 Lq（每相等效）", self.motor_lq),
             ("永磁磁链 ψf", self.motor_flux),
             ("极对数 p", self.motor_poles),
         ):
@@ -189,20 +189,20 @@ class ParameterPanel(QFrame):
         note.setWordWrap(True)
         note.setStyleSheet("color: #71858b; padding: 3px;")
         layout.addWidget(note)
-        tabs = QTabWidget()
+        self.pid_tabs = QTabWidget()
         self.current_pid = PIDEditor(self.config.control.current, "V")
         self.speed_pid = PIDEditor(self.config.control.speed, "A / V")
         self.position_pid = PIDEditor(self.config.control.position, "rpm / A / V")
-        tabs.addTab(self.current_pid, "电流环")
-        tabs.addTab(self.speed_pid, "速度环")
-        tabs.addTab(self.position_pid, "位置环")
-        layout.addWidget(tabs)
+        self.pid_tabs.addTab(self.current_pid, "电流环")
+        self.pid_tabs.addTab(self.speed_pid, "速度环")
+        self.pid_tabs.addTab(self.position_pid, "位置环")
+        layout.addWidget(self.pid_tabs)
         ff_group = QGroupBox("控制器选项")
         ff_layout = QVBoxLayout(ff_group)
         self.ff_current = QCheckBox("电流前馈")
         self.ff_speed = QCheckBox("速度前馈")
         self.ff_position = QCheckBox("位置前馈")
-        self.auto_tune = QPushButton("自动整定（接口预留）")
+        self.auto_tune = QPushButton("PID 计算器")
         self.auto_tune.setEnabled(False)
         for widget in (self.ff_current, self.ff_speed, self.ff_position, self.auto_tune):
             ff_layout.addWidget(widget)

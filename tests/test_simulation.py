@@ -71,6 +71,7 @@ class SimulationTests(unittest.TestCase):
     def test_model_based_speed_estimators_remain_finite_in_closed_loop(self):
         methods = (
             SpeedEstimatorMethod.PLL,
+            SpeedEstimatorMethod.ORTHOGONAL_PLL,
             SpeedEstimatorMethod.KALMAN,
             SpeedEstimatorMethod.STATE_OBSERVER,
         )

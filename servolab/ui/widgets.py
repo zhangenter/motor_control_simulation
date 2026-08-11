@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtCore import QLocale, pyqtSignal
 from PyQt5.QtWidgets import (
     QCheckBox,
     QDoubleSpinBox,
@@ -45,6 +45,10 @@ def make_double(
     suffix: str = "",
 ) -> QDoubleSpinBox:
     box = FocusWheelDoubleSpinBox()
+    # Control parameters and experiment files consistently use a dot as the
+    # decimal separator.  Do not let the desktop locale turn it into a group
+    # separator (for example, interpreting "0.25" as an invalid value).
+    box.setLocale(QLocale.c())
     box.setRange(minimum, maximum)
     box.setDecimals(decimals)
     box.setSingleStep(step)

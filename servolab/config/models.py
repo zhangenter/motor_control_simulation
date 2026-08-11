@@ -84,6 +84,7 @@ class SpeedEstimatorMethod(str, Enum):
     DIFFERENCE = "位置差分"
     FILTERED_DIFFERENCE = "差分 + 一阶低通"
     PLL = "PLL"
+    ORTHOGONAL_PLL = "正交/带抗饱和 PLL"
     KALMAN = "卡尔曼滤波"
     STATE_OBSERVER = "二阶状态观测器"
 
@@ -101,6 +102,7 @@ class SpeedEstimatorConfig:
     cutoff_frequency: float = 50.0
     pll_bandwidth: float = 30.0
     pll_damping: float = 0.707
+    pll_speed_limit: float = 3000.0
     kalman_acceleration_noise: float = 500.0
     observer_bandwidth: float = 30.0
     observer_damping: float = 1.0

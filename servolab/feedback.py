@@ -6,7 +6,7 @@ import math
 import numpy as np
 
 from .config import EncoderConfig, SpeedEstimatorConfig, SpeedEstimatorMethod
-from .units import rad_s_to_rpm
+from .units import rad_s_to_rpm, rpm_to_rad_s
 
 
 class EncoderModel:
@@ -69,6 +69,8 @@ class SpeedEstimator:
             return true_speed
         if self.config.method == SpeedEstimatorMethod.PLL:
             return self._pll(measured_position, dt)
+        if self.config.method == SpeedEstimatorMethod.ORTHOGONAL_PLL:
+            return self._orthogonal_anti_windup_pll(measured_position, dt)
         if self.config.method == SpeedEstimatorMethod.KALMAN:
             return self._kalman(measured_position, dt)
         if self.config.method == SpeedEstimatorMethod.STATE_OBSERVER:
@@ -105,6 +107,42 @@ class SpeedEstimator:
             self.speed_estimate_rad_s + proportional * phase_error
         ) * dt
         return rad_s_to_rpm(self.speed_estimate_rad_s)
+
+    def _orthogonal_anti_windup_pll(self, measured_position: float, dt: float) -> float:
+        """Track encoder phase with a bounded quadrature detector and PI anti-windup."""
+        if not self._initialize_state(measured_position) or dt <= 0.0:
+            return rad_s_to_rpm(self.speed_estimate_rad_s)
+
+        proportional, integral = self._tracking_gains(
+            self.config.pll_bandwidth,
+            self.config.pll_damping,
+            dt,
+        )
+        measured_sin = math.sin(measured_position)
+        measured_cos = math.cos(measured_position)
+        estimated_sin = math.sin(self.position_estimate)
+        estimated_cos = math.cos(self.position_estimate)
+        phase_error = measured_sin * estimated_cos - measured_cos * estimated_sin
+
+        unlimited_speed = self.speed_estimate_rad_s + proportional * phase_error
+        limited_speed = self._limit_pll_speed(unlimited_speed)
+        anti_windup_gain = integral / proportional if proportional > 1e-12 else 0.0
+        self.speed_estimate_rad_s += (
+            integral * phase_error
+            + anti_windup_gain * (limited_speed - unlimited_speed)
+        ) * dt
+
+        unlimited_speed = self.speed_estimate_rad_s + proportional * phase_error
+        limited_speed = self._limit_pll_speed(unlimited_speed)
+        self.position_estimate += limited_speed * dt
+        return rad_s_to_rpm(limited_speed)
+
+    def _limit_pll_speed(self, speed_rad_s: float) -> float:
+        limit_rpm = max(self.config.pll_speed_limit, 0.0)
+        if limit_rpm <= 0.0:
+            return speed_rad_s
+        limit_rad_s = rpm_to_rad_s(limit_rpm)
+        return max(-limit_rad_s, min(limit_rad_s, speed_rad_s))
 
     def _kalman(self, measured_position: float, dt: float) -> float:
         if not self._initialize_kalman(measured_position) or dt <= 0.0:

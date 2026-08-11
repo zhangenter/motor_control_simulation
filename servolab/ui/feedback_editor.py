@@ -45,6 +45,7 @@ class FeedbackEditor(QWidget):
         self.estimator_cutoff = make_double(50, 0.1, 10000, 2, 5, " Hz")
         self.pll_bandwidth = make_double(30, 0.1, 10000, 2, 5, " Hz")
         self.pll_damping = make_double(0.707, 0.1, 5, 3, 0.1)
+        self.pll_speed_limit = make_double(3000, 1, 1e7, 2, 100, " rpm")
         self.kalman_acceleration_noise = make_double(
             500, 0.001, 1e7, 3, 50, " rad/s²"
         )
@@ -57,6 +58,7 @@ class FeedbackEditor(QWidget):
         form.addRow("低通截止频率", self.estimator_cutoff)
         form.addRow("PLL 带宽", self.pll_bandwidth)
         form.addRow("PLL 阻尼比", self.pll_damping)
+        form.addRow("PLL 速度限幅", self.pll_speed_limit)
         form.addRow("加速度噪声 σ", self.kalman_acceleration_noise)
         form.addRow("观测器带宽", self.observer_bandwidth)
         form.addRow("观测器阻尼比", self.observer_damping)
@@ -76,6 +78,11 @@ class FeedbackEditor(QWidget):
         visible = {
             SpeedEstimatorMethod.FILTERED_DIFFERENCE: (self.estimator_cutoff,),
             SpeedEstimatorMethod.PLL: (self.pll_bandwidth, self.pll_damping),
+            SpeedEstimatorMethod.ORTHOGONAL_PLL: (
+                self.pll_bandwidth,
+                self.pll_damping,
+                self.pll_speed_limit,
+            ),
             SpeedEstimatorMethod.KALMAN: (self.kalman_acceleration_noise,),
             SpeedEstimatorMethod.STATE_OBSERVER: (
                 self.observer_bandwidth,
@@ -94,6 +101,9 @@ class FeedbackEditor(QWidget):
             SpeedEstimatorMethod.DIFFERENCE: "由相邻编码器位置差分，能直接观察量化抖动。",
             SpeedEstimatorMethod.FILTERED_DIFFERENCE: "位置差分后使用一阶低通，是默认的真实反馈链路。",
             SpeedEstimatorMethod.PLL: "用相位误差锁定编码器位置，带宽决定跟随速度与抑噪能力。",
+            SpeedEstimatorMethod.ORTHOGONAL_PLL: (
+                "用有界正交鉴相器锁定位置；速度限幅配合回算式抗饱和，防止积分器累积。"
+            ),
             SpeedEstimatorMethod.KALMAN: (
                 "用位置/速度状态模型递推估算；测量噪声由编码器噪声和分辨率自动计算。"
             ),
@@ -108,6 +118,7 @@ class FeedbackEditor(QWidget):
             self.estimator_cutoff,
             self.pll_bandwidth,
             self.pll_damping,
+            self.pll_speed_limit,
             self.kalman_acceleration_noise,
             self.observer_bandwidth,
             self.observer_damping,
@@ -125,6 +136,7 @@ class FeedbackEditor(QWidget):
         config.speed_estimator.cutoff_frequency = self.estimator_cutoff.value()
         config.speed_estimator.pll_bandwidth = self.pll_bandwidth.value()
         config.speed_estimator.pll_damping = self.pll_damping.value()
+        config.speed_estimator.pll_speed_limit = self.pll_speed_limit.value()
         config.speed_estimator.kalman_acceleration_noise = self.kalman_acceleration_noise.value()
         config.speed_estimator.observer_bandwidth = self.observer_bandwidth.value()
         config.speed_estimator.observer_damping = self.observer_damping.value()
@@ -138,6 +150,7 @@ class FeedbackEditor(QWidget):
         self.estimator_cutoff.setValue(config.speed_estimator.cutoff_frequency)
         self.pll_bandwidth.setValue(config.speed_estimator.pll_bandwidth)
         self.pll_damping.setValue(config.speed_estimator.pll_damping)
+        self.pll_speed_limit.setValue(config.speed_estimator.pll_speed_limit)
         self.kalman_acceleration_noise.setValue(
             config.speed_estimator.kalman_acceleration_noise
         )

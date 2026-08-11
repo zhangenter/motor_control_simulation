@@ -36,6 +36,21 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(loaded.feedback.speed_estimator.kalman_acceleration_noise, 750.0)
         self.assertEqual(loaded.speed_unit, "rpm")
 
+    def test_orthogonal_pll_config_roundtrip(self):
+        cfg = ExperimentConfig()
+        cfg.feedback.speed_estimator.method = SpeedEstimatorMethod.ORTHOGONAL_PLL
+        cfg.feedback.speed_estimator.pll_speed_limit = 1800.0
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "orthogonal-pll.json"
+            cfg.save(path)
+            loaded = ExperimentConfig.load(path)
+
+        self.assertEqual(
+            loaded.feedback.speed_estimator.method,
+            SpeedEstimatorMethod.ORTHOGONAL_PLL,
+        )
+        self.assertEqual(loaded.feedback.speed_estimator.pll_speed_limit, 1800.0)
+
     def test_legacy_encoder_fields_are_migrated_with_ideal_speed_feedback(self):
         loaded = ExperimentConfig.from_dict(
             {
