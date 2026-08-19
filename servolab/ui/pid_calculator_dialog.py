@@ -15,7 +15,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from ..config import MotorConfig
+from ..config import CurrentAxis, MotorConfig
 from ..control import (
     PIDTuningResult,
     tune_current_loop,
@@ -97,10 +97,13 @@ class PIDCalculatorDialog(QDialog):
             "采用 RL 对象零点抵消法，目标带宽应明显低于采样频率。",
         )
         self.current_resistance = make_double(0.6, 0.000001, 1e5, 6, 0.1, " Ω")
+        self.current_axis = QComboBox()
+        self.current_axis.addItems(["q 轴", "d 轴"])
         self.current_inductance = make_double(0.0015, 0.0000001, 100, 8, 0.0001, " H")
         self.current_bandwidth = make_double(400.0, 0.01, 1e6, 2, 10.0, " Hz")
         form.addRow("定子电阻 Rs（每相）", self.current_resistance)
-        form.addRow("q 轴电感 Lq（每相等效）", self.current_inductance)
+        form.addRow("计算轴", self.current_axis)
+        form.addRow("轴电感 L（每相等效）", self.current_inductance)
         form.addRow("目标带宽 fc", self.current_bandwidth)
         self._add_formula(form, "Kp = Lq · 2πfc     Ki = Rs · 2πfc     Kd = 0")
         return page
@@ -220,6 +223,7 @@ class PIDCalculatorDialog(QDialog):
 
     def _connect_signals(self) -> None:
         self.loop_combo.currentIndexChanged.connect(self._loop_changed)
+        self.current_axis.currentIndexChanged.connect(self._current_axis_changed)
         self.calculate_button.clicked.connect(self.calculate)
         self.apply_button.clicked.connect(self.apply_result)
         for widget in self._input_widgets():
@@ -239,9 +243,12 @@ class PIDCalculatorDialog(QDialog):
             self.position_bandwidth,
         )
 
+    def selected_current_axis(self) -> CurrentAxis:
+        return CurrentAxis.D if self.current_axis.currentIndex() == 1 else CurrentAxis.Q
+
     def prepare(self, motor: MotorConfig) -> None:
         """Load current experiment motor values before showing the calculator."""
-
+        self._prepared_motor = motor
         values = (
             (self.current_resistance, motor.resistance),
             (self.current_inductance, motor.lq),
@@ -255,6 +262,19 @@ class PIDCalculatorDialog(QDialog):
             widget.setValue(value)
             widget.blockSignals(False)
         self.calculate()
+
+    def prepare_current_axis(self, motor: MotorConfig, axis: CurrentAxis) -> None:
+        self._prepared_motor = motor
+        self.current_axis.setCurrentIndex(1 if axis == CurrentAxis.D else 0)
+        self.current_inductance.setValue(motor.ld if axis == CurrentAxis.D else motor.lq)
+        self.calculate()
+
+    def _current_axis_changed(self) -> None:
+        motor = getattr(self, "_prepared_motor", None)
+        if motor is not None:
+            inductance = motor.ld if self.selected_current_axis() == CurrentAxis.D else motor.lq
+            self.current_inductance.setValue(inductance)
+        self._invalidate_result()
 
     def _loop_changed(self, index: int) -> None:
         contexts = (

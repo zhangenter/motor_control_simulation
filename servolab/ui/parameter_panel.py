@@ -18,12 +18,15 @@ from PyQt5.QtWidgets import (
 
 from ..config import (
     CommandType,
+    CurrentAxis,
     ExperimentConfig,
     LoopMode,
     ReferenceType,
     allowed_reference_types,
     default_reference_type,
 )
+from .current_test_editor import CurrentTestEditor
+from .disturbance_editor import DisturbanceEditor
 from .feedback_editor import FeedbackEditor
 from .widgets import PIDEditor, make_double, make_int
 
@@ -78,8 +81,14 @@ class ParameterPanel(QFrame):
         topology_form.addRow("用户输入", self.reference_combo)
         layout.addWidget(topology_group)
 
-        command_group = QGroupBox("指令发生器")
-        command_form = QFormLayout(command_group)
+        self.current_test = CurrentTestEditor()
+        self.axis_d = self.current_test.axis_d
+        self.axis_q = self.current_test.axis_q
+        self.lock_rotor = self.current_test.lock_rotor
+        layout.addWidget(self.current_test)
+
+        self.command_group = QGroupBox("指令发生器")
+        command_form = QFormLayout(self.command_group)
         self.command_combo = QComboBox()
         self.command_combo.addItems([item.value for item in CommandType])
         self.command_amplitude = make_double(6.283185307, -1e5, 1e5, 5, 0.5)
@@ -100,10 +109,12 @@ class ParameterPanel(QFrame):
             ("保持时间", self.command_hold),
             ("手动值", self.command_manual),
         )
+        self.command_labels = {}
         for label, widget in fields:
             command_form.addRow(label, widget)
+            self.command_labels[widget] = command_form.labelForField(widget)
         command_form.addRow("轨迹文件", self.trajectory_button)
-        layout.addWidget(command_group)
+        layout.addWidget(self.command_group)
 
         sim_group = QGroupBox("时间与采样")
         sim_form = QFormLayout(sim_group)
@@ -123,6 +134,7 @@ class ParameterPanel(QFrame):
     def _connect_experiment_fields(self) -> None:
         self.mode_combo.currentTextChanged.connect(self._field_changed)
         self.reference_combo.currentTextChanged.connect(self._field_changed)
+        self.current_test.changed.connect(self._current_test_changed)
         self.command_combo.currentTextChanged.connect(self._field_changed)
         self.experiment_name.editingFinished.connect(self._field_changed)
         fields = (
@@ -190,10 +202,15 @@ class ParameterPanel(QFrame):
         note.setStyleSheet("color: #71858b; padding: 3px;")
         layout.addWidget(note)
         self.pid_tabs = QTabWidget()
-        self.current_pid = PIDEditor(self.config.control.current, "V")
+        self.current_axis_tabs = QTabWidget()
+        self.current_d_pid = PIDEditor(self.config.control.current_d, "V")
+        self.current_q_pid = PIDEditor(self.config.control.current, "V")
+        self.current_axis_tabs.addTab(self.current_d_pid, "d 轴 PI")
+        self.current_axis_tabs.addTab(self.current_q_pid, "q 轴 PI")
+        self.current_pid = self.current_q_pid
         self.speed_pid = PIDEditor(self.config.control.speed, "A / V")
         self.position_pid = PIDEditor(self.config.control.position, "rpm / A / V")
-        self.pid_tabs.addTab(self.current_pid, "电流环")
+        self.pid_tabs.addTab(self.current_axis_tabs, "dq 电流环")
         self.pid_tabs.addTab(self.speed_pid, "速度环")
         self.pid_tabs.addTab(self.position_pid, "位置环")
         layout.addWidget(self.pid_tabs)
@@ -208,100 +225,24 @@ class ParameterPanel(QFrame):
             ff_layout.addWidget(widget)
         layout.addWidget(ff_group)
         layout.addStretch()
-        for editor in (self.current_pid, self.speed_pid, self.position_pid):
+        for editor in (self.current_d_pid, self.current_q_pid, self.speed_pid, self.position_pid):
             editor.changed.connect(self._field_changed)
         for check in (self.ff_current, self.ff_speed, self.ff_position):
             check.toggled.connect(self._field_changed)
         return content
 
     def _build_disturbance_form(self) -> QWidget:
-        content = QWidget()
-        layout = QVBoxLayout(content)
-        layout.setContentsMargins(8, 8, 8, 16)
-        self._add_cogging_group(layout)
-        self._add_friction_group(layout)
-        self._add_load_group(layout)
-        self._add_inertia_group(layout)
-        layout.addStretch()
-        checks = (
-            self.cogging_enabled,
-            self.friction_enabled,
-            self.load_enabled,
-            self.extra_inertia_enabled,
-        )
-        for check in checks:
-            check.toggled.connect(self._field_changed)
-        for widget in self._disturbance_fields():
-            widget.valueChanged.connect(self._field_changed)
-        return content
-
-    def _add_cogging_group(self, layout) -> None:
-        group = QGroupBox("齿槽转矩")
-        form = QFormLayout(group)
-        self.cogging_enabled = QCheckBox("启用齿槽效应")
-        self.cogging_amplitude = make_double(0.02, 0, 1000, 5, 0.01, " N·m")
-        self.cogging_harmonic = make_int(6, 1, 100)
-        self.cogging_phase = make_double(0, -360, 360, 2, 5, "°")
-        form.addRow("", self.cogging_enabled)
-        form.addRow("幅值", self.cogging_amplitude)
-        form.addRow("空间谐波", self.cogging_harmonic)
-        form.addRow("相位", self.cogging_phase)
-        layout.addWidget(group)
-
-    def _add_friction_group(self, layout) -> None:
-        group = QGroupBox("摩擦模型")
-        form = QFormLayout(group)
-        self.friction_enabled = QCheckBox("启用 Stribeck 复合摩擦")
-        self.static_friction = make_double(0.04, 0, 1000, 5, 0.01, " N·m")
-        self.coulomb_friction = make_double(0.025, 0, 1000, 5, 0.01, " N·m")
-        self.friction_viscous = make_double(0.0002, 0, 100, 7, 0.0001)
-        self.stribeck_velocity = make_double(4.77464829, 0.0001, 1e6, 5, 1.0, " rpm")
-        form.addRow("", self.friction_enabled)
-        form.addRow("最大静摩擦", self.static_friction)
-        form.addRow("库仑摩擦", self.coulomb_friction)
-        form.addRow("黏性摩擦系数", self.friction_viscous)
-        form.addRow("Stribeck 速度", self.stribeck_velocity)
-        layout.addWidget(group)
-
-    def _add_load_group(self, layout) -> None:
-        group = QGroupBox("组合负载转矩")
-        form = QFormLayout(group)
-        self.load_enabled = QCheckBox("启用负载干扰")
-        self.load_constant = make_double(0, -1000, 1000, 5, 0.01, " N·m")
-        self.load_step = make_double(0.08, -1000, 1000, 5, 0.01, " N·m")
-        self.load_step_time = make_double(1.5, 0, 1e4, 4, 0.1, " s")
-        self.load_sine_amp = make_double(0, 0, 1000, 5, 0.01, " N·m")
-        self.load_sine_freq = make_double(1, 0, 1e4, 4, 0.1, " Hz")
-        self.load_noise = make_double(0, 0, 1000, 6, 0.001, " N·m")
-        for label, widget in (
-            ("", self.load_enabled),
-            ("恒定分量", self.load_constant),
-            ("阶跃分量", self.load_step),
-            ("阶跃时刻", self.load_step_time),
-            ("正弦幅值", self.load_sine_amp),
-            ("正弦频率", self.load_sine_freq),
-            ("随机噪声 σ", self.load_noise),
-        ):
-            form.addRow(label, widget)
-        layout.addWidget(group)
-
-    def _add_inertia_group(self, layout) -> None:
-        group = QGroupBox("负载惯量变化")
-        form = QFormLayout(group)
-        self.extra_inertia_enabled = QCheckBox("启用负载惯量阶跃")
-        self.extra_inertia = make_double(0, 0, 100, 8, 0.0001, " kg·m²")
-        self.inertia_time = make_double(1, 0, 1e4, 4, 0.1, " s")
-        for label, widget in (
-            ("", self.extra_inertia_enabled),
-            ("附加惯量", self.extra_inertia),
-            ("变化时刻", self.inertia_time),
-        ):
-            form.addRow(label, widget)
-        layout.addWidget(group)
+        self.disturbance_editor = DisturbanceEditor(self.config.disturbance)
+        self.disturbance_tabs = self.disturbance_editor.tabs
+        self.disturbance_editor.changed.connect(self._field_changed)
+        return self.disturbance_editor
 
     def _field_changed(self, *_args) -> None:
         if not self._loading:
             self.changed.emit()
+
+    def sync_mode_dependent_controls(self, mode: LoopMode) -> None:
+        self.update_current_test_controls(mode, self.current_test.selected_axis())
 
     def update_config(self, config: ExperimentConfig) -> None:
         self.config = config
@@ -309,11 +250,13 @@ class ParameterPanel(QFrame):
         config.control.mode = LoopMode(self.mode_combo.currentText())
         config.command.reference_type = ReferenceType(self.reference_combo.currentText())
         config.command.kind = CommandType(self.command_combo.currentText())
+        config.command.current_axis = self.current_test.selected_axis()
+        config.command.lock_rotor = self.lock_rotor.isChecked()
         self._update_command_config(config)
         self._update_motor_config(config)
         self._update_control_config(config)
         self.feedback_editor.update_config(config.feedback)
-        self._update_disturbance_config(config)
+        self.disturbance_editor.update_config(config.disturbance)
 
     def _update_command_config(self, config: ExperimentConfig) -> None:
         command = config.command
@@ -339,27 +282,13 @@ class ParameterPanel(QFrame):
             setattr(motor, name, widget.value())
 
     def _update_control_config(self, config: ExperimentConfig) -> None:
-        self.current_pid.update_config(config.control.current)
+        self.current_d_pid.update_config(config.control.current_d)
+        self.current_q_pid.update_config(config.control.current)
         self.speed_pid.update_config(config.control.speed)
         self.position_pid.update_config(config.control.position)
         config.control.current_feedforward = self.ff_current.isChecked()
         config.control.speed_feedforward = self.ff_speed.isChecked()
         config.control.position_feedforward = self.ff_position.isChecked()
-
-    def _update_disturbance_config(self, config: ExperimentConfig) -> None:
-        disturbance = config.disturbance
-        disturbance.cogging_enabled = self.cogging_enabled.isChecked()
-        disturbance.friction_enabled = self.friction_enabled.isChecked()
-        disturbance.load_enabled = self.load_enabled.isChecked()
-        disturbance.extra_inertia_enabled = self.extra_inertia_enabled.isChecked()
-        names = (
-            "cogging_amplitude", "cogging_harmonic", "cogging_phase_deg",
-            "static_friction", "coulomb_friction", "viscous_friction", "stribeck_velocity",
-            "load_constant", "load_step", "load_step_time", "load_sine_amplitude",
-            "load_sine_frequency", "load_noise_std", "extra_inertia", "inertia_step_time",
-        )
-        for name, widget in zip(names, self._disturbance_fields()):
-            setattr(disturbance, name, widget.value())
 
     def load_config(self, config: ExperimentConfig) -> None:
         self.config = config
@@ -368,17 +297,20 @@ class ParameterPanel(QFrame):
         self.mode_combo.setCurrentText(config.control.mode.value)
         self.set_reference_options(config.control.mode, config.command.reference_type)
         self.command_combo.setCurrentText(config.command.kind.value)
+        self.current_test.load(config.command.current_axis, config.command.lock_rotor)
         self._load_primary_fields(config)
-        self.current_pid.load_config(config.control.current)
+        self.current_d_pid.load_config(config.control.current_d)
+        self.current_q_pid.load_config(config.control.current)
         self.speed_pid.load_config(config.control.speed)
         self.position_pid.load_config(config.control.position)
         self.ff_current.setChecked(config.control.current_feedforward)
         self.ff_speed.setChecked(config.control.speed_feedforward)
         self.ff_position.setChecked(config.control.position_feedforward)
         self.feedback_editor.load_config(config.feedback)
-        self._load_disturbance_fields(config)
+        self.disturbance_editor.load_config(config.disturbance)
         self._loading = False
         self.update_command_units(config.command.reference_type)
+        self.update_current_test_controls(config.control.mode, config.command.current_axis)
 
     def _load_primary_fields(self, config: ExperimentConfig) -> None:
         fields = (
@@ -399,27 +331,6 @@ class ParameterPanel(QFrame):
         for widget, value in zip(fields, values):
             widget.setValue(value)
 
-    def _load_disturbance_fields(self, config: ExperimentConfig) -> None:
-        disturbance = config.disturbance
-        for widget, checked in (
-            (self.cogging_enabled, disturbance.cogging_enabled),
-            (self.friction_enabled, disturbance.friction_enabled),
-            (self.load_enabled, disturbance.load_enabled),
-            (self.extra_inertia_enabled, disturbance.extra_inertia_enabled),
-        ):
-            widget.setChecked(checked)
-        values = (
-            disturbance.cogging_amplitude, disturbance.cogging_harmonic,
-            disturbance.cogging_phase_deg, disturbance.static_friction,
-            disturbance.coulomb_friction, disturbance.viscous_friction,
-            disturbance.stribeck_velocity, disturbance.load_constant, disturbance.load_step,
-            disturbance.load_step_time, disturbance.load_sine_amplitude,
-            disturbance.load_sine_frequency, disturbance.load_noise_std,
-            disturbance.extra_inertia, disturbance.inertia_step_time,
-        )
-        for widget, value in zip(self._disturbance_fields(), values):
-            widget.setValue(value)
-
     def set_reference_options(
         self,
         mode: LoopMode,
@@ -438,17 +349,37 @@ class ParameterPanel(QFrame):
         for field in (self.command_amplitude, self.command_offset, self.command_manual):
             field.setSuffix(unit)
 
+    def update_current_test_controls(
+        self,
+        mode: LoopMode,
+        axis: CurrentAxis | None = None,
+    ) -> None:
+        enabled = mode == LoopMode.CURRENT
+        self.current_test.setVisible(enabled)
+        if not enabled:
+            self.command_group.setTitle("指令发生器")
+            self.command_labels[self.command_amplitude].setText("幅值")
+            self.command_labels[self.command_offset].setText("偏置")
+            self.command_labels[self.command_manual].setText("手动值")
+            return
+        selected = axis or (CurrentAxis.D if self.axis_d.isChecked() else CurrentAxis.Q)
+        symbol = "Id" if selected == CurrentAxis.D else "Iq"
+        inactive = "Iq" if selected == CurrentAxis.D else "Id"
+        self.command_group.setTitle(f"{symbol} 指令发生器")
+        self.command_labels[self.command_amplitude].setText(f"{symbol} 幅值")
+        self.command_labels[self.command_offset].setText(f"{symbol} 偏置")
+        self.command_labels[self.command_manual].setText(f"{symbol} 手动值")
+        self.current_test.update_hint(selected)
+        self.current_axis_tabs.setCurrentIndex(0 if selected == CurrentAxis.D else 1)
+
+    def _current_test_changed(self) -> None:
+        self.update_current_test_controls(
+            LoopMode(self.mode_combo.currentText()), self.current_test.selected_axis()
+        )
+        self._field_changed()
+
     def _motor_fields(self):
         return (
             self.motor_r, self.motor_ld, self.motor_lq, self.motor_flux, self.motor_poles,
             self.motor_inertia, self.motor_viscous, self.motor_voltage, self.motor_current,
-        )
-
-    def _disturbance_fields(self):
-        return (
-            self.cogging_amplitude, self.cogging_harmonic, self.cogging_phase,
-            self.static_friction, self.coulomb_friction, self.friction_viscous,
-            self.stribeck_velocity, self.load_constant, self.load_step, self.load_step_time,
-            self.load_sine_amp, self.load_sine_freq, self.load_noise,
-            self.extra_inertia, self.inertia_time,
         )

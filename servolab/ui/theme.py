@@ -75,6 +75,12 @@ QLabel#TuningFormula {
     font-family: "Menlo", "Consolas";
 }
 QLabel#TuningHint { color: #6f858c; background: transparent; }
+QLabel#CurrentTestHint {
+    color: #8adfc6;
+    background: #111d1a;
+    border-left: 2px solid #45d6ad;
+    padding: 6px 8px;
+}
 QFrame#TuningResults { background: #0c1316; border: 1px solid #293a40; }
 QFrame#TuningResultCard { background: #142025; border: 1px solid #263b42; }
 QFrame#TuningResults QLabel { background: transparent; }

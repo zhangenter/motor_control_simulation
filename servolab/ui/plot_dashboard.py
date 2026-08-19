@@ -7,7 +7,7 @@ import pyqtgraph as pg
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QCheckBox, QHBoxLayout, QLabel, QTabWidget, QVBoxLayout, QWidget
 
-from ..config import ReferenceType
+from ..config import CurrentAxis, ReferenceType
 from .theme import PLOT_COLORS
 
 
@@ -23,9 +23,16 @@ class PlotDashboard(QTabWidget):
         "speed_actual": "rpm",
         "speed_error": "rpm",
         "current_ref": "A",
+        "id_ref": "A",
+        "iq_ref": "A",
         "iq": "A",
         "id": "A",
         "vq": "V",
+        "vd": "V",
+        "applied_vq": "V",
+        "applied_vd": "V",
+        "bus_voltage": "V",
+        "voltage_limit": "V",
         "torque": "N·m",
         "load_torque": "N·m",
         "friction_torque": "N·m",
@@ -57,13 +64,25 @@ class PlotDashboard(QTabWidget):
             ),
         ),
         (
-            "电流 / 电压",
-            "A / V",
+            "dq 电流",
+            "A",
             (
-                ("current_ref", "Iq 指令", PLOT_COLORS["reference"]),
-                ("iq", "Iq 反馈", PLOT_COLORS["feedback"]),
-                ("id", "Id 反馈", PLOT_COLORS["secondary"]),
-                ("vq", "Vq", PLOT_COLORS["disturbance"]),
+                ("id_ref", "Id*", PLOT_COLORS["secondary"]),
+                ("id", "Id", PLOT_COLORS["feedback"]),
+                ("iq_ref", "Iq*", PLOT_COLORS["reference"]),
+                ("iq", "Iq", PLOT_COLORS["disturbance"]),
+            ),
+        ),
+        (
+            "dq 电压",
+            "V",
+            (
+                ("vd", "Vd", PLOT_COLORS["secondary"]),
+                ("vq", "Vq", PLOT_COLORS["reference"]),
+                ("applied_vd", "实际 Vd", PLOT_COLORS["feedback"]),
+                ("applied_vq", "实际 Vq", PLOT_COLORS["disturbance"]),
+                ("bus_voltage", "母线电压", PLOT_COLORS["muted"]),
+                ("voltage_limit", "电压限幅", PLOT_COLORS["error"]),
             ),
         ),
         (
@@ -103,8 +122,11 @@ class PlotDashboard(QTabWidget):
         self.manual_callback: Callable[[float], None] | None = None
         self._manual_guard = False
         self._input_display_signature: tuple[ReferenceType, bool] | None = None
+        self.current_axis: CurrentAxis | None = None
         for title, unit, signals in self.PLOT_SPECS:
             self._add_plot_page(title, unit, signals)
+        for key in ("applied_vd", "applied_vq", "bus_voltage"):
+            self.channel_checks[key].setChecked(False)
 
     def _add_plot_page(self, title: str, unit: str, signals) -> None:
         page = QWidget()
@@ -192,6 +214,22 @@ class PlotDashboard(QTabWidget):
         check.setChecked(show_speed)
         check.blockSignals(False)
         self.curves["user_speed_ref"].setVisible(show_speed)
+
+    def set_current_axis(self, axis: CurrentAxis) -> None:
+        if axis == self.current_axis:
+            return
+        self.current_axis = axis
+        active_channels = {
+            CurrentAxis.D: {"id_ref", "id"},
+            CurrentAxis.Q: {"iq_ref", "iq"},
+        }[axis]
+        for key in ("id_ref", "id", "iq_ref", "iq"):
+            active = key in active_channels
+            check = self.channel_checks[key]
+            check.blockSignals(True)
+            check.setChecked(active)
+            check.blockSignals(False)
+            self.curves[key].setVisible(active)
 
     def _install_cursor(self, plot: pg.PlotWidget) -> None:
         pen = pg.mkPen("#587078", width=1, style=Qt.DotLine)
@@ -294,6 +332,7 @@ class PlotDashboard(QTabWidget):
         reference_type: ReferenceType,
         value: float,
         callback: Callable[[float], None],
+        current_axis: CurrentAxis = CurrentAxis.Q,
     ) -> None:
         plot_index = 2 if reference_type == ReferenceType.CURRENT else 1 if reference_type == ReferenceType.SPEED else 0
         target_plot = self.plots[plot_index]
@@ -315,6 +354,9 @@ class PlotDashboard(QTabWidget):
             pen=pg.mkPen(PLOT_COLORS["reference"], width=2),
             hoverPen=pg.mkPen("#fff1b7", width=3),
         )
+        if reference_type == ReferenceType.CURRENT:
+            axis_name = "Id" if current_axis == CurrentAxis.D else "Iq"
+            self.manual_line.setToolTip(f"拖动设置 {axis_name} 手动值")
         self.manual_line.setZValue(15)
         self.manual_line.sigPositionChanged.connect(self._manual_position_changed)
         target_plot.addItem(self.manual_line)

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from servolab.config import (
     CommandType,
+    CurrentAxis,
     ExperimentConfig,
     LoopMode,
     ReferenceType,
@@ -18,7 +19,18 @@ class ConfigTests(unittest.TestCase):
         cfg.control.mode = LoopMode.CURRENT_SPEED
         cfg.command.kind = CommandType.SINE
         cfg.command.reference_type = ReferenceType.SPEED
+        cfg.command.current_axis = CurrentAxis.D
+        cfg.command.lock_rotor = False
+        cfg.control.current_d.kp = 2.75
         cfg.disturbance.cogging_enabled = True
+        cfg.disturbance.pwm_enabled = True
+        cfg.disturbance.pwm_switching_frequency = 16000.0
+        cfg.disturbance.dead_time_enabled = True
+        cfg.disturbance.dead_time_us = 1.5
+        cfg.disturbance.bus_voltage_enabled = True
+        cfg.disturbance.bus_voltage_ripple_percent = 8.0
+        cfg.disturbance.back_emf_enabled = True
+        cfg.disturbance.back_emf_harmonic_order = 12
         cfg.feedback.encoder.resolution = 4096
         cfg.feedback.speed_estimator.method = SpeedEstimatorMethod.KALMAN
         cfg.feedback.speed_estimator.kalman_acceleration_noise = 750.0
@@ -30,7 +42,18 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(loaded.control.mode, LoopMode.CURRENT_SPEED)
         self.assertEqual(loaded.command.kind, CommandType.SINE)
         self.assertEqual(loaded.command.reference_type, ReferenceType.SPEED)
+        self.assertEqual(loaded.command.current_axis, CurrentAxis.D)
+        self.assertFalse(loaded.command.lock_rotor)
+        self.assertEqual(loaded.control.current_d.kp, 2.75)
         self.assertTrue(loaded.disturbance.cogging_enabled)
+        self.assertTrue(loaded.disturbance.pwm_enabled)
+        self.assertEqual(loaded.disturbance.pwm_switching_frequency, 16000.0)
+        self.assertTrue(loaded.disturbance.dead_time_enabled)
+        self.assertEqual(loaded.disturbance.dead_time_us, 1.5)
+        self.assertTrue(loaded.disturbance.bus_voltage_enabled)
+        self.assertEqual(loaded.disturbance.bus_voltage_ripple_percent, 8.0)
+        self.assertTrue(loaded.disturbance.back_emf_enabled)
+        self.assertEqual(loaded.disturbance.back_emf_harmonic_order, 12)
         self.assertEqual(loaded.feedback.encoder.resolution, 4096)
         self.assertEqual(loaded.feedback.speed_estimator.method, SpeedEstimatorMethod.KALMAN)
         self.assertEqual(loaded.feedback.speed_estimator.kalman_acceleration_noise, 750.0)
@@ -95,6 +118,22 @@ class ConfigTests(unittest.TestCase):
         self.assertAlmostEqual(loaded.command.trajectory_value[-1], 60.0)
         self.assertAlmostEqual(loaded.control.speed.kp, 0.08 * 2.0 * math.pi / 60.0)
         self.assertAlmostEqual(loaded.disturbance.stribeck_velocity, 15.0 / math.pi)
+
+    def test_legacy_current_config_defaults_to_q_axis_and_copies_d_axis_pid(self):
+        loaded = ExperimentConfig.from_dict(
+            {
+                "speed_unit": "rpm",
+                "control": {
+                    "mode": LoopMode.CURRENT.value,
+                    "current": {"kp": 5.0, "ki": 900.0},
+                },
+                "command": {"reference_type": ReferenceType.CURRENT.value},
+            }
+        )
+        self.assertEqual(loaded.command.current_axis, CurrentAxis.Q)
+        self.assertFalse(loaded.command.lock_rotor)
+        self.assertEqual(loaded.control.current_d.kp, 5.0)
+        self.assertEqual(loaded.control.current_d.ki, 900.0)
 
 
 if __name__ == "__main__":

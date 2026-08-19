@@ -79,7 +79,6 @@ def _connect_header_actions(owner) -> None:
 def build_right_panel(owner) -> QWidget:
     panel = QFrame()
     panel.setMinimumWidth(220)
-    panel.setMaximumWidth(300)
     layout = QVBoxLayout(panel)
     layout.setContentsMargins(8, 10, 10, 8)
     header = QHBoxLayout()
@@ -104,7 +103,7 @@ def _add_value_cards(owner, layout) -> None:
     owner.time_card = ValueCard("SIM TIME", "s", PLOT_COLORS["muted"])
     owner.position_card = ValueCard("POSITION", "rad", PLOT_COLORS["feedback"])
     owner.speed_card = ValueCard("SPEED", "rpm", PLOT_COLORS["secondary"])
-    owner.current_card = ValueCard("Q CURRENT", "A", PLOT_COLORS["reference"])
+    owner.current_card = ValueCard("DQ CURRENT", "A", PLOT_COLORS["reference"])
     owner.torque_card = ValueCard("TORQUE", "N·m", PLOT_COLORS["disturbance"])
     for card in (
         owner.time_card,
@@ -139,9 +138,9 @@ def build_bottom_panel(owner) -> QWidget:
     owner.log_view = QPlainTextEdit()
     owner.log_view.setReadOnly(True)
     owner.log_view.setMaximumBlockCount(500)
-    owner.bottom_tabs.addTab(owner.log_view, "运行日志")
-    custom_widget = QWidget()
-    layout = QHBoxLayout(custom_widget)
+    owner.log_tab_index = owner.bottom_tabs.addTab(owner.log_view, "运行日志")
+    owner.custom_controller_page = QWidget()
+    layout = QHBoxLayout(owner.custom_controller_page)
     layout.setContentsMargins(14, 12, 14, 12)
     layout.setSpacing(18)
     summary = QVBoxLayout()
@@ -158,7 +157,9 @@ def build_bottom_panel(owner) -> QWidget:
     owner.open_custom_editor_button.setObjectName("PrimaryButton")
     owner.open_custom_editor_button.setMinimumWidth(190)
     layout.addWidget(owner.open_custom_editor_button, 0, Qt.AlignVCenter)
-    owner.bottom_tabs.addTab(custom_widget, "自定义控制器")
+    owner.custom_controller_tab_index = owner.bottom_tabs.addTab(
+        owner.custom_controller_page, "自定义控制器"
+    )
     return owner.bottom_tabs
 
 

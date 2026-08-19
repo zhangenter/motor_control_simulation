@@ -8,7 +8,7 @@ from .pid_calculator_dialog import PIDCalculatorDialog
 
 
 class ApplicationMenuController:
-    """Build and coordinate the experiment and toolbox drop-down menus."""
+    """Build and coordinate the application drop-down menus."""
 
     def __init__(self, owner):
         self.owner = owner
@@ -23,6 +23,7 @@ class ApplicationMenuController:
         menu_bar = self.owner.menuBar()
         menu_bar.setNativeMenuBar(False)
         experiment_menu = menu_bar.addMenu("实验")
+        window_menu = menu_bar.addMenu("窗口")
         toolbox_menu = menu_bar.addMenu("工具箱")
         self.owner.new_experiment_action = self._action(
             "新建实验", "Ctrl+N", self.new_experiment, "创建采用默认参数的新实验"
@@ -45,6 +46,27 @@ class ApplicationMenuController:
         )
         experiment_menu.addSeparator()
         experiment_menu.addAction(self.owner.exit_action)
+        self.owner.parameters_view_action = self._view_action(
+            "实验参数", self.owner.parameters, "显示或隐藏实验参数面板"
+        )
+        self.owner.realtime_view_action = self._view_action(
+            "实时状态", self.owner.right_panel, "显示或隐藏实时状态面板"
+        )
+        self.owner.log_view_action = self._bottom_tab_action(
+            "运行日志", self.owner.log_tab_index, "显示或隐藏运行日志"
+        )
+        self.owner.custom_controller_view_action = self._bottom_tab_action(
+            "自定义控制器",
+            self.owner.custom_controller_tab_index,
+            "显示或隐藏自定义控制器入口",
+        )
+        window_menu.addActions(
+            (self.owner.parameters_view_action, self.owner.realtime_view_action)
+        )
+        window_menu.addSeparator()
+        window_menu.addActions(
+            (self.owner.log_view_action, self.owner.custom_controller_view_action)
+        )
         self.owner.pid_calculator_action = self._action(
             "PID 计算器…", "Ctrl+Shift+P", self.show_pid_calculator, "计算三环 PID 参数"
         )
@@ -56,6 +78,32 @@ class ApplicationMenuController:
         action.setStatusTip(status_tip)
         action.triggered.connect(callback)
         return action
+
+    def _view_action(self, text: str, widget, status_tip: str) -> QAction:
+        action = QAction(text, self.owner)
+        action.setCheckable(True)
+        action.setChecked(True)
+        action.setStatusTip(status_tip)
+        action.toggled.connect(widget.setVisible)
+        return action
+
+    def _bottom_tab_action(self, text: str, index: int, status_tip: str) -> QAction:
+        action = QAction(text, self.owner)
+        action.setCheckable(True)
+        action.setChecked(True)
+        action.setStatusTip(status_tip)
+        action.toggled.connect(
+            lambda visible, tab_index=index: self._set_bottom_tab_visible(tab_index, visible)
+        )
+        return action
+
+    def _set_bottom_tab_visible(self, index: int, visible: bool) -> None:
+        self.owner.bottom_tabs.setTabVisible(index, visible)
+        bottom_visible = (
+            self.owner.log_view_action.isChecked()
+            or self.owner.custom_controller_view_action.isChecked()
+        )
+        self.owner.bottom_panel.setVisible(bottom_visible)
 
     def new_experiment(self) -> None:
         owner = self.owner
@@ -74,17 +122,26 @@ class ApplicationMenuController:
     def show_pid_calculator(self) -> None:
         self.owner._sync_config_from_form()
         self.pid_calculator.prepare(self.owner.config.motor)
+        self.pid_calculator.prepare_current_axis(
+            self.owner.config.motor, self.owner.config.command.current_axis
+        )
         self.pid_calculator.show()
         self.pid_calculator.raise_()
         self.pid_calculator.activateWindow()
 
     def apply_pid(self, loop: str, kp: float, ki: float, kd: float) -> None:
+        current_editor = (
+            self.owner.parameters.current_d_pid
+            if self.pid_calculator.selected_current_axis().value == "d"
+            else self.owner.parameters.current_q_pid
+        )
         editors = {
-            "current": self.owner.parameters.current_pid,
+            "current": current_editor,
             "speed": self.owner.parameters.speed_pid,
             "position": self.owner.parameters.position_pid,
         }
-        labels = {"current": "电流环", "speed": "速度环", "position": "位置环"}
+        current_label = f"{self.pid_calculator.selected_current_axis().value} 轴电流环"
+        labels = {"current": current_label, "speed": "速度环", "position": "位置环"}
         editor = editors[loop]
         editor.kp.setValue(kp)
         editor.ki.setValue(ki)

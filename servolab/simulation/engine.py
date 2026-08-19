@@ -92,26 +92,50 @@ class ServoSimulation:
         measured.update(theta=measured_theta, omega=measured_speed, t=self.time)
         user_command = command_value(cfg.command, self.time)
         control_command = self._controller_command(user_command, measured_theta, dt)
-        control = self.controller.update(control_command, measured, dt)
+        control = self.controller.update(
+            control_command,
+            measured,
+            dt,
+            cfg.command.current_axis,
+        )
         if self.use_custom_controller and self.custom_controller is not None:
             self._apply_custom_controller(control, control_command, user_command, measured, dt)
 
         cogging = self.disturbance.cogging(state.theta)
         friction = self.disturbance.friction(state.omega, state.torque)
         external_load = self.disturbance.load(self.time)
-        self.motor.step(
+        electrical = self.disturbance.electrical(
+            self.time,
+            state.theta,
+            state.omega,
+            state.id,
+            state.iq,
             control.vd,
             control.vq,
+        )
+        self.motor.step(
+            electrical.applied_vd,
+            electrical.applied_vq,
             external_load + cogging,
             friction,
             self.disturbance.inertia(self.time),
             dt,
+            cfg.control.mode == LoopMode.CURRENT and cfg.command.lock_rotor,
+            electrical.back_emf_vd,
+            electrical.back_emf_vq,
         )
         self.time += dt
         self._sample_accumulator += dt
         if self._sample_accumulator + 1e-12 >= cfg.simulation.plot_interval:
             self._sample_accumulator %= max(cfg.simulation.plot_interval, dt)
-            self._record_sample(user_command, control, external_load, friction, cogging)
+            self._record_sample(
+                user_command,
+                control,
+                external_load,
+                friction,
+                cogging,
+                electrical,
+            )
 
     def _apply_custom_controller(
         self,
@@ -131,6 +155,8 @@ class ServoSimulation:
                 if self.config.control.mode != LoopMode.CURRENT
                 else control_command
             ),
+            "id_ref": control.id_ref,
+            "iq_ref": control.iq_ref,
         }
         vd, vq = self.custom_controller.update(measured, reference, dt)
         voltage_limit = self.config.motor.dc_voltage / math.sqrt(3.0)
@@ -161,12 +187,21 @@ class ServoSimulation:
         load: float,
         friction: float,
         cogging: float,
+        electrical=None,
     ) -> None:
         state = self.motor.state
         mode = self.config.control.mode
         reference_type = self.config.command.reference_type
-        target_current = control.current_ref if mode != LoopMode.CURRENT else command
+        if mode == LoopMode.CURRENT:
+            id_ref = command if self.config.command.current_axis.value == "d" else 0.0
+            iq_ref = command if self.config.command.current_axis.value == "q" else 0.0
+        else:
+            id_ref, iq_ref = control.id_ref, control.iq_ref
+        target_current = iq_ref
         active_pid = self._active_pid_terms()
+        bus_voltage = electrical.bus_voltage if electrical else self.config.motor.dc_voltage
+        applied_vd = electrical.applied_vd if electrical else control.vd
+        applied_vq = electrical.applied_vq if electrical else control.vq
         sample = {
             "time": self.time,
             "command": command,
@@ -184,8 +219,12 @@ class ServoSimulation:
                 control.speed_ref - self.estimated_speed if "速度" in mode.value else 0.0
             ),
             "current_ref": target_current,
+            "id_ref": id_ref,
+            "iq_ref": iq_ref,
             "id": state.id,
             "iq": state.iq,
+            "id_error": id_ref - state.id if "电流" in mode.value else 0.0,
+            "iq_error": iq_ref - state.iq if "电流" in mode.value else 0.0,
             "current_error": target_current - state.iq if "电流" in mode.value else 0.0,
             "torque": state.torque,
             "load_torque": load,
@@ -193,6 +232,16 @@ class ServoSimulation:
             "cogging_torque": cogging,
             "vd": control.vd,
             "vq": control.vq,
+            "applied_vd": applied_vd,
+            "applied_vq": applied_vq,
+            "bus_voltage": bus_voltage,
+            "voltage_limit": bus_voltage / math.sqrt(3.0),
+            "pwm_vd": electrical.pwm_vd if electrical else 0.0,
+            "pwm_vq": electrical.pwm_vq if electrical else 0.0,
+            "dead_time_vd": electrical.dead_time_vd if electrical else 0.0,
+            "dead_time_vq": electrical.dead_time_vq if electrical else 0.0,
+            "back_emf_vd": electrical.back_emf_vd if electrical else 0.0,
+            "back_emf_vq": electrical.back_emf_vq if electrical else 0.0,
             "pid_p": active_pid.p,
             "pid_i": active_pid.i,
             "pid_d": active_pid.d,
@@ -203,6 +252,8 @@ class ServoSimulation:
     def _active_pid_terms(self):
         mode = self.config.control.mode
         if mode == LoopMode.CURRENT:
+            if self.config.command.current_axis.value == "d":
+                return self.controller.current_d.terms
             return self.controller.current_q.terms
         if mode in (LoopMode.SPEED, LoopMode.CURRENT_SPEED):
             return self.controller.speed.terms

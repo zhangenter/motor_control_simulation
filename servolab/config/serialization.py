@@ -22,6 +22,7 @@ from .models import (
 )
 from .topology import (
     CommandType,
+    CurrentAxis,
     LoopMode,
     ReferenceType,
     allowed_reference_types,
@@ -34,6 +35,7 @@ def experiment_to_dict(config: ExperimentConfig) -> dict[str, Any]:
     data["control"]["mode"] = config.control.mode.value
     data["command"]["kind"] = config.command.kind.value
     data["command"]["reference_type"] = config.command.reference_type.value
+    data["command"]["current_axis"] = config.command.current_axis.value
     data["feedback"]["speed_estimator"]["method"] = config.feedback.speed_estimator.method.value
     return data
 
@@ -86,13 +88,23 @@ def load_experiment(path: str | Path) -> ExperimentConfig:
 def _control_from_dict(data: dict[str, Any]) -> ControlConfig:
     data["mode"] = _enum_value(LoopMode, data.get("mode", LoopMode.CASCADE.value))
     defaults = ControlConfig()
+    current_provided = isinstance(data.get("current"), dict)
     for key in ("current", "speed", "position"):
         value = data.get(key)
         data[key] = PIDConfig(**value) if isinstance(value, dict) else getattr(defaults, key)
+    current_d = data.get("current_d")
+    if isinstance(current_d, dict):
+        data["current_d"] = PIDConfig(**current_d)
+    elif current_provided:
+        current = data["current"]
+        data["current_d"] = PIDConfig(**asdict(current))
+    else:
+        data["current_d"] = defaults.current_d
     return ControlConfig(**data)
 
 
 def _command_from_dict(data: dict[str, Any], mode: LoopMode) -> CommandConfig:
+    data.setdefault("lock_rotor", False)
     data["kind"] = _enum_value(CommandType, data.get("kind", CommandType.STEP.value))
     data["reference_type"] = _enum_value(
         ReferenceType,
@@ -100,6 +112,10 @@ def _command_from_dict(data: dict[str, Any], mode: LoopMode) -> CommandConfig:
     )
     if data["reference_type"] not in allowed_reference_types(mode):
         data["reference_type"] = default_reference_type(mode)
+    data["current_axis"] = _enum_value(
+        CurrentAxis,
+        data.get("current_axis", CurrentAxis.Q.value),
+    )
     return CommandConfig(**data)
 
 

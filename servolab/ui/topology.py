@@ -2,7 +2,7 @@ from PyQt5.QtCore import QRectF, Qt
 from PyQt5.QtGui import QColor, QFont, QPainter, QPen
 from PyQt5.QtWidgets import QWidget
 
-from ..config import LoopMode, ReferenceType, has_position_outer_loop
+from ..config import CurrentAxis, LoopMode, ReferenceType, has_position_outer_loop
 
 
 class TopologyWidget(QWidget):
@@ -12,6 +12,7 @@ class TopologyWidget(QWidget):
         super().__init__(parent)
         self.mode = LoopMode.CASCADE
         self.reference_type = ReferenceType.POSITION
+        self.current_axis = CurrentAxis.Q
         self.setMinimumHeight(100)
         self.setMaximumHeight(112)
 
@@ -21,6 +22,10 @@ class TopologyWidget(QWidget):
 
     def set_reference_type(self, reference_type: ReferenceType) -> None:
         self.reference_type = reference_type
+        self.update()
+
+    def set_current_axis(self, current_axis: CurrentAxis) -> None:
+        self.current_axis = current_axis
         self.update()
 
     def paintEvent(self, _event) -> None:  # noqa: N802
@@ -46,8 +51,9 @@ class TopologyWidget(QWidget):
             self._paint_node(painter, index, label, len(nodes), left, gap, node_width)
 
     def _nodes(self) -> list[str]:
+        current_label = "d轴 PI" if self.mode == LoopMode.CURRENT and self.current_axis == CurrentAxis.D else "q轴 PI"
         mode_nodes = {
-            LoopMode.CURRENT: ["电流 PI", "PMSM"],
+            LoopMode.CURRENT: [current_label, "PMSM"],
             LoopMode.SPEED: ["速度 PID", "PMSM"],
             LoopMode.POSITION: ["位置 PID", "PMSM"],
             LoopMode.CURRENT_SPEED: ["速度 PID", "电流 PI", "PMSM"],
@@ -58,7 +64,7 @@ class TopologyWidget(QWidget):
         input_labels = {
             ReferenceType.POSITION: "位置指令",
             ReferenceType.SPEED: "速度指令",
-            ReferenceType.CURRENT: "电流指令",
+            ReferenceType.CURRENT: "Id 指令" if self.current_axis == CurrentAxis.D else "Iq 指令",
         }
         nodes = [input_labels[self.reference_type]]
         if self.reference_type == ReferenceType.SPEED and has_position_outer_loop(self.mode):

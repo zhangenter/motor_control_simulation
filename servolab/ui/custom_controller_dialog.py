@@ -223,8 +223,13 @@ class CustomControllerDialog(QDialog):
         self.code_editor.setFocus()
 
     def set_context(self, config: ExperimentConfig) -> None:
+        axis = (
+            f" / {config.command.current_axis.value} 轴"
+            if config.control.mode.value == "电流单环"
+            else ""
+        )
         self.generator_context.setText(
-            f"{config.control.mode.value}  →  {config.command.reference_type.value}"
+            f"{config.control.mode.value}  →  {config.command.reference_type.value}{axis}"
         )
         self.generator_context.setToolTip("参数取自主界面当前 PID 与电机配置")
 
@@ -293,6 +298,7 @@ class CustomControllerManager:
             config.control,
             config.motor,
             self.dialog.generation_options(),
+            config.command.current_axis,
         )
         self.dialog.code_editor.setPlainText(source)
         self.source_path = None

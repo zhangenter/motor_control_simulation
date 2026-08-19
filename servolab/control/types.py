@@ -16,5 +16,7 @@ class ControlOutput:
     vq: float = 0.0
     position_ref: float = 0.0
     speed_ref: float = 0.0  # rpm
+    id_ref: float = 0.0
+    iq_ref: float = 0.0
     current_ref: float = 0.0
     active_loop: str = ""

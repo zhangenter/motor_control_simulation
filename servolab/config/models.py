@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from ..units import RPM_PER_RAD_S
-from .topology import CommandType, LoopMode, ReferenceType
+from .topology import CommandType, CurrentAxis, LoopMode, ReferenceType
 
 
 @dataclass
@@ -38,6 +38,9 @@ class PIDConfig:
 class ControlConfig:
     mode: LoopMode = LoopMode.CASCADE
     current: PIDConfig = field(
+        default_factory=lambda: PIDConfig(4.0, 800.0, output_limit=27.0, integral_limit=20.0)
+    )
+    current_d: PIDConfig = field(
         default_factory=lambda: PIDConfig(4.0, 800.0, output_limit=27.0, integral_limit=20.0)
     )
     speed: PIDConfig = field(
@@ -77,6 +80,8 @@ class CommandConfig:
     manual_value: float = 0.0
     trajectory_time: list[float] = field(default_factory=list)
     trajectory_value: list[float] = field(default_factory=list)
+    current_axis: CurrentAxis = CurrentAxis.Q
+    lock_rotor: bool = True
 
 
 class SpeedEstimatorMethod(str, Enum):
@@ -135,6 +140,19 @@ class DisturbanceConfig:
     extra_inertia_enabled: bool = False
     extra_inertia: float = 0.0
     inertia_step_time: float = 1.0
+    pwm_enabled: bool = False
+    pwm_switching_frequency: float = 10000.0
+    pwm_ripple_percent: float = 2.0
+    dead_time_enabled: bool = False
+    dead_time_us: float = 2.0
+    bus_voltage_enabled: bool = False
+    bus_voltage_offset_percent: float = 0.0
+    bus_voltage_ripple_percent: float = 5.0
+    bus_voltage_ripple_frequency: float = 100.0
+    back_emf_enabled: bool = False
+    back_emf_harmonic_percent: float = 5.0
+    back_emf_harmonic_order: int = 6
+    back_emf_phase_deg: float = 0.0
 
 
 @dataclass

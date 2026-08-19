@@ -1,6 +1,6 @@
 import unittest
 
-from servolab.config import ControlConfig, LoopMode, MotorConfig, allowed_reference_types
+from servolab.config import CurrentAxis, ControlConfig, LoopMode, MotorConfig, allowed_reference_types
 from servolab.custom_controller import (
     ControllerGenerationOptions,
     CustomControllerError,
@@ -77,6 +77,28 @@ class CustomControllerTests(unittest.TestCase):
         self.assertIn("current_kff", compensated)
         self.assertNotIn("条件积分", plain)
         self.assertIn("条件积分", compensated)
+
+    def test_generated_d_axis_current_controller_drives_vd(self):
+        code = generate_custom_controller_code(
+            LoopMode.CURRENT,
+            allowed_reference_types(LoopMode.CURRENT)[0],
+            ControlConfig(mode=LoopMode.CURRENT),
+            MotorConfig(),
+            current_axis=CurrentAxis.D,
+        )
+        process = CustomControllerProcess(timeout_s=0.2)
+        try:
+            process.start(code)
+            vd, vq = process.update(
+                {"id": 0.1, "iq": 99.0, "theta": 0.0, "omega": 0.0, "torque": 0.0},
+                {"current": 0.18, "id_ref": 0.18, "iq_ref": 0.0},
+                0.0002,
+            )
+            self.assertGreater(vd, 0.0)
+            self.assertEqual(vq, 0.0)
+            self.assertIn('current_target, state["id"]', code)
+        finally:
+            process.stop()
 
 
 if __name__ == "__main__":

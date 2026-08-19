@@ -21,6 +21,7 @@ from .serialization import (
 )
 from .topology import (
     CommandType,
+    CurrentAxis,
     LoopMode,
     POSITION_OUTER_MODES,
     ReferenceType,
@@ -32,6 +33,7 @@ from .topology import (
 __all__ = [
     "CommandConfig",
     "CommandType",
+    "CurrentAxis",
     "ControlConfig",
     "DisturbanceConfig",
     "EncoderConfig",

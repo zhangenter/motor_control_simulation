@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 
-from ..config import ControlConfig, LoopMode, MotorConfig
+from ..config import ControlConfig, CurrentAxis, LoopMode, MotorConfig
 from .pid import PIDController
 from .types import ControlOutput
 
@@ -14,7 +14,7 @@ class ServoController:
         self.config = config
         self.motor = motor
         self.current_q = PIDController(config.current)
-        self.current_d = PIDController(config.current)
+        self.current_d = PIDController(config.current_d)
         self.speed = PIDController(config.speed)
         self.position = PIDController(config.position)
 
@@ -22,11 +22,20 @@ class ServoController:
         for controller in (self.current_q, self.current_d, self.speed, self.position):
             controller.reset()
 
-    def update(self, command: float, state: dict[str, float], dt: float) -> ControlOutput:
+    def update(
+        self,
+        command: float,
+        state: dict[str, float],
+        dt: float,
+        current_axis: CurrentAxis = CurrentAxis.Q,
+    ) -> ControlOutput:
         mode = self.config.mode
         output = ControlOutput(active_loop=mode.value)
         if mode == LoopMode.CURRENT:
-            self._current_loop(output, command, state, dt)
+            if current_axis == CurrentAxis.D:
+                self._current_loop(output, 0.0, state, dt, id_target=command)
+            else:
+                self._current_loop(output, command, state, dt)
         elif mode == LoopMode.SPEED:
             self._speed_voltage_loop(output, command, state, dt)
         elif mode == LoopMode.POSITION:
@@ -54,11 +63,15 @@ class ServoController:
         target: float,
         state: dict[str, float],
         dt: float,
+        id_target: float = 0.0,
     ) -> None:
+        output.id_ref = id_target
+        output.iq_ref = target
         output.current_ref = target
-        feedforward = target if self.config.current_feedforward else 0.0
-        output.vq = self.current_q.update(target, state["iq"], dt, feedforward)
-        output.vd = self.current_d.update(0.0, state["id"], dt)
+        q_feedforward = target if self.config.current_feedforward else 0.0
+        d_feedforward = id_target if self.config.current_feedforward else 0.0
+        output.vq = self.current_q.update(target, state["iq"], dt, q_feedforward)
+        output.vd = self.current_d.update(id_target, state["id"], dt, d_feedforward)
 
     def _speed_voltage_loop(
         self,

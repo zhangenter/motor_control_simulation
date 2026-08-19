@@ -34,17 +34,25 @@ class PMSMMotor:
         friction_torque: float,
         extra_inertia: float,
         dt: float,
+        lock_rotor: bool = False,
+        back_emf_vd: float = 0.0,
+        back_emf_vq: float = 0.0,
     ) -> MotorState:
         cfg = self.config
         state = self.state
         speed_rad_s = rpm_to_rad_s(state.omega)
         electrical_speed = cfg.pole_pairs * speed_rad_s
-        did = (vd - cfg.resistance * state.id + electrical_speed * cfg.lq * state.iq) / max(
-            cfg.ld,
-            1e-9,
-        )
+        did = (
+            vd
+            - cfg.resistance * state.id
+            + electrical_speed * cfg.lq * state.iq
+            - back_emf_vd
+        ) / max(cfg.ld, 1e-9)
         diq = (
-            vq - cfg.resistance * state.iq - electrical_speed * (cfg.ld * state.id + cfg.flux)
+            vq
+            - cfg.resistance * state.iq
+            - electrical_speed * (cfg.ld * state.id + cfg.flux)
+            - back_emf_vq
         ) / max(cfg.lq, 1e-9)
 
         state.id += did * dt
@@ -58,6 +66,9 @@ class PMSMMotor:
         state.torque = 1.5 * cfg.pole_pairs * (
             cfg.flux * state.iq + (cfg.ld - cfg.lq) * state.id * state.iq
         )
+        if lock_rotor:
+            state.omega = 0.0
+            return state
         inertia = max(cfg.inertia + extra_inertia, 1e-9)
         acceleration = (
             state.torque - load_torque - friction_torque - cfg.viscous * speed_rad_s

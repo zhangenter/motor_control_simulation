@@ -11,12 +11,20 @@ from PyQt5.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QProgressDialog,
+    QSizePolicy,
     QSplitter,
     QVBoxLayout,
     QWidget,
 )
 
-from ..config import CommandType, ExperimentConfig, LoopMode, ReferenceType, has_position_outer_loop
+from ..config import (
+    CommandType,
+    CurrentAxis,
+    ExperimentConfig,
+    LoopMode,
+    ReferenceType,
+    has_position_outer_loop,
+)
 from ..control import CustomControllerError
 from ..services import ControllerGenerationOptions, SimulationSession, generate_custom_controller_code
 from .custom_controller_dialog import CustomControllerDialog, CustomControllerManager
@@ -85,21 +93,24 @@ class ServoLabWindow(QMainWindow):
         self.parameters = ParameterPanel(self.config)
         self.parameters.changed.connect(self._form_changed)
         self.parameters.trajectory_requested.connect(self.load_trajectory)
-        vertical = QSplitter(Qt.Vertical)
-        horizontal = QSplitter(Qt.Horizontal)
-        horizontal.addWidget(self.parameters)
-        horizontal.addWidget(self._build_center_panel())
-        horizontal.addWidget(build_right_panel(self))
-        horizontal.setStretchFactor(0, 0)
-        horizontal.setStretchFactor(1, 1)
-        horizontal.setStretchFactor(2, 0)
-        horizontal.setSizes([330, 900, 260])
-        vertical.addWidget(horizontal)
-        vertical.addWidget(build_bottom_panel(self))
-        vertical.setStretchFactor(0, 1)
-        vertical.setStretchFactor(1, 0)
-        vertical.setSizes([720, 220])
-        root_layout.addWidget(vertical)
+        self.vertical_splitter = QSplitter(Qt.Vertical)
+        self.horizontal_splitter = QSplitter(Qt.Horizontal)
+        self.right_panel = build_right_panel(self)
+        self.bottom_panel = build_bottom_panel(self)
+        self.horizontal_splitter.addWidget(self.parameters)
+        self.horizontal_splitter.addWidget(self._build_center_panel())
+        self.horizontal_splitter.addWidget(self.right_panel)
+        self.horizontal_splitter.setHandleWidth(5)
+        self.horizontal_splitter.setStretchFactor(0, 0)
+        self.horizontal_splitter.setStretchFactor(1, 1)
+        self.horizontal_splitter.setStretchFactor(2, 0)
+        self.horizontal_splitter.setSizes([330, 900, 260])
+        self.vertical_splitter.addWidget(self.horizontal_splitter)
+        self.vertical_splitter.addWidget(self.bottom_panel)
+        self.vertical_splitter.setStretchFactor(0, 1)
+        self.vertical_splitter.setStretchFactor(1, 0)
+        self.vertical_splitter.setSizes([720, 220])
+        root_layout.addWidget(self.vertical_splitter)
         self.setCentralWidget(root)
         build_status_bar(self)
         self._create_coordinators()
@@ -107,6 +118,8 @@ class ServoLabWindow(QMainWindow):
 
     def _build_center_panel(self) -> QWidget:
         panel = QWidget()
+        panel.setMinimumWidth(480)
+        panel.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(4, 10, 4, 4)
         self.topology = TopologyWidget()
@@ -127,6 +140,7 @@ class ServoLabWindow(QMainWindow):
             self.config.control,
             self.config.motor,
             initial_options,
+            self.config.command.current_axis,
         )
         self.custom_dialog = CustomControllerDialog(initial_code, self)
         self.custom_controller = CustomControllerManager(
@@ -155,7 +169,7 @@ class ServoLabWindow(QMainWindow):
     def _expose_compatibility_widgets(self) -> None:
         for name in (
             "mode_combo", "reference_combo", "command_amplitude", "command_manual",
-            "current_pid", "speed_pid", "position_pid",
+            "current_pid", "current_d_pid", "current_q_pid", "speed_pid", "position_pid",
         ):
             setattr(self, name, getattr(self.parameters, name))
         aliases = {
@@ -185,18 +199,24 @@ class ServoLabWindow(QMainWindow):
     def _form_changed(self) -> None:
         old_mode = self.config.control.mode
         old_reference = self.config.command.reference_type
+        old_current_axis = self.config.command.current_axis
         selected_mode = LoopMode(self.parameters.mode_combo.currentText())
         if selected_mode != old_mode:
             self.parameters.set_reference_options(selected_mode, old_reference)
+        self.parameters.sync_mode_dependent_controls(selected_mode)
         self._sync_config_from_form()
         self.topology.set_mode(self.config.control.mode)
         self.topology.set_reference_type(self.config.command.reference_type)
+        self.topology.set_current_axis(self.config.command.current_axis)
         if old_mode != self.config.control.mode:
             self.controller_reset_for_mode()
             self._log(f"控制拓扑切换为：{self.config.control.mode.value}")
         if old_reference != self.config.command.reference_type:
             self.controller_reset_for_mode()
             self._log(f"用户输入切换为：{self.config.command.reference_type.value}")
+        if old_current_axis != self.config.command.current_axis:
+            self.controller_reset_for_mode()
+            self._log(f"电流测试轴切换为：{self.config.command.current_axis.value} 轴")
         self._refresh_reference_controls()
         self.custom_controller.refresh_context()
 
@@ -214,18 +234,24 @@ class ServoLabWindow(QMainWindow):
         self._sync_config_from_form()
         self.topology.set_mode(self.config.control.mode)
         self.topology.set_reference_type(self.config.command.reference_type)
+        self.topology.set_current_axis(self.config.command.current_axis)
         self._refresh_reference_controls()
         self.custom_controller.refresh_context()
 
     def _refresh_reference_controls(self) -> None:
         self.parameters.update_command_units(self.config.command.reference_type)
+        self.parameters.update_current_test_controls(
+            self.config.control.mode, self.config.command.current_axis
+        )
         position_outer = has_position_outer_loop(self.config.control.mode)
         self.plots.set_input_reference(self.config.command.reference_type, position_outer)
+        self.plots.set_current_axis(self.config.command.current_axis)
         self.plots.set_manual_control(
             self.config.command.kind == CommandType.MANUAL,
             self.config.command.reference_type,
             self.config.command.manual_value,
             self._manual_line_changed,
+            self.config.command.current_axis,
         )
 
     def _manual_line_changed(self, value: float) -> None:
@@ -295,7 +321,8 @@ class ServoLabWindow(QMainWindow):
             self.time_card.set_value(sample.get("time", 0.0), 4)
             self.position_card.set_value(sample.get("position_actual", sample.get("position", 0.0)), 4)
             self.speed_card.set_value(sample.get("speed_actual", sample.get("speed", 0.0)), 3)
-            self.current_card.set_value(sample.get("iq", 0.0), 3)
+            current_key = "id" if self.config.command.current_axis == CurrentAxis.D else "iq"
+            self.current_card.set_value(sample.get(current_key, 0.0), 3)
             self.torque_card.set_value(sample.get("torque", 0.0), 4)
         history = self.simulation.history.data
         self.plots.update_data(history)
@@ -322,7 +349,9 @@ class ServoLabWindow(QMainWindow):
         if reference_type == ReferenceType.SPEED:
             return "速度", "rpm", history.get("speed_actual", []), history.get("user_speed_ref", [])
         if reference_type == ReferenceType.CURRENT:
-            return "电流", "A", history.get("iq", []), history.get("current_ref", [])
+            if self.config.command.current_axis == CurrentAxis.D:
+                return "Id", "A", history.get("id", []), history.get("id_ref", [])
+            return "Iq", "A", history.get("iq", []), history.get("iq_ref", [])
         return "位置", "rad", history.get("position_actual", []), history.get("position_ref", [])
 
     @staticmethod

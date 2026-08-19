@@ -27,6 +27,11 @@ class ReferenceType(str, Enum):
     CURRENT = "电流输入"
 
 
+class CurrentAxis(str, Enum):
+    D = "d"
+    Q = "q"
+
+
 POSITION_OUTER_MODES = frozenset(
     {
         LoopMode.POSITION,

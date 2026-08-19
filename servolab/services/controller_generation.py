@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 
-from ..config import ControlConfig, LoopMode, MotorConfig, PIDConfig, ReferenceType
+from ..config import ControlConfig, CurrentAxis, LoopMode, MotorConfig, PIDConfig, ReferenceType
 
 
 @dataclass(frozen=True)
@@ -38,6 +38,7 @@ def generate_custom_controller_code(
     control: ControlConfig,
     motor: MotorConfig,
     options: ControllerGenerationOptions | None = None,
+    current_axis: CurrentAxis = CurrentAxis.Q,
 ) -> str:
     generator = ControllerCodeGenerator(
         mode,
@@ -45,6 +46,7 @@ def generate_custom_controller_code(
         control,
         motor,
         options or ControllerGenerationOptions(),
+        current_axis,
     )
     return generator.generate()
 
@@ -57,12 +59,14 @@ class ControllerCodeGenerator:
         control: ControlConfig,
         motor: MotorConfig,
         options: ControllerGenerationOptions,
+        current_axis: CurrentAxis = CurrentAxis.Q,
     ):
         self.mode = mode
         self.reference_type = reference_type
         self.control = control
         self.motor = motor
         self.options = options
+        self.current_axis = current_axis
         self.chain = LOOP_CHAINS[mode]
 
     def generate(self) -> str:
@@ -79,7 +83,7 @@ class ControllerCodeGenerator:
             f"# 控制目标：{self.reference_type.value}",
             f"# 可选功能：{feature_text}",
             "# state: id, iq, theta, omega (rpm), torque, t",
-            "# reference: user_input, position, speed (rpm), current",
+            "# reference: user_input, position, speed (rpm), current, id_ref, iq_ref",
             "",
             "def clamp(value, limit):",
             "    limit = abs(limit)",
@@ -170,6 +174,9 @@ class ControllerCodeGenerator:
         outer_loop = self.chain[0]
         source, _measurement = TARGET_SOURCES[outer_loop]
         lines = [f"    {outer_loop}_target = {source}"]
+        if self.mode == LoopMode.CURRENT:
+            key = "id_ref" if self.current_axis == CurrentAxis.D else "iq_ref"
+            lines[0] = f'    current_target = reference.get("{key}", reference["current"])'
         if outer_loop == "position" and self.reference_type == ReferenceType.SPEED:
             lines.append("    # 速度输入已由仿真核心积分为 position 参考")
         previous_output = ""
@@ -182,28 +189,36 @@ class ControllerCodeGenerator:
 
     def _loop_lines(self, loop_name: str) -> list[str]:
         lines = []
+        d_axis_test = (
+            loop_name == "current"
+            and self.mode == LoopMode.CURRENT
+            and self.current_axis == CurrentAxis.D
+        )
         if loop_name == "current":
-            if self.options.friction_compensation:
+            if self.options.friction_compensation and not d_axis_test:
                 lines.append("    current_target += friction_current")
             lines.append(
                 f'    current_target = clamp(current_target, params.setdefault("current_limit", {_number(self.motor.current_limit)}))'
             )
-        config = getattr(self.control, loop_name)
-        lines.extend(_pid_call_lines(loop_name, TARGET_SOURCES[loop_name][1], config, self.options))
+        config = self.control.current_d if d_axis_test else getattr(self.control, loop_name)
+        measurement = 'state["id"]' if d_axis_test else TARGET_SOURCES[loop_name][1]
+        lines.extend(_pid_call_lines(loop_name, measurement, config, self.options))
         return lines
 
     def _axis_output_lines(self) -> list[str]:
         if "current" not in self.chain:
             return ["    vd = 0.0", f"    vq = {self.chain[-1]}_output"]
-        current = self.control.current
+        d_current = self.control.current_d
+        if self.mode == LoopMode.CURRENT and self.current_axis == CurrentAxis.D:
+            return ["    vd = current_output", "    vq = 0.0"]
         return [
             "    # 带电流环时同时稳定 d 轴电流",
-            f'    current_d_kp = params.setdefault("current_d_kp", {_number(current.kp)})',
-            f'    current_d_ki = params.setdefault("current_d_ki", {_number(current.ki)})',
-            f'    current_d_kd = params.setdefault("current_d_kd", {_number(current.kd)})',
+            f'    current_d_kp = params.setdefault("current_d_kp", {_number(d_current.kp)})',
+            f'    current_d_ki = params.setdefault("current_d_ki", {_number(d_current.ki)})',
+            f'    current_d_kd = params.setdefault("current_d_kd", {_number(d_current.kd)})',
             "    vd = pid_step(",
             '        "current_d", 0.0, state["id"], current_d_kp, current_d_ki, current_d_kd,',
-            f"        {_number(current.output_limit)}, {_number(current.integral_limit)}, params, dt,",
+            f"        {_number(d_current.output_limit)}, {_number(d_current.integral_limit)}, params, dt,",
             "    )",
             "    vq = current_output",
         ]
